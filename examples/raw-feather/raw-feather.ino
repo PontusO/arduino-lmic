@@ -56,56 +56,6 @@ Author:
 #define TX_INTERVAL 2000        // milliseconds
 #define RX_RSSI_INTERVAL 100    // milliseconds
 
-// Pin mapping for Adafruit Feather M0 LoRa, etc.
-//
-// Adafruit BSPs are not consistent -- m0 express defs ARDUINO_SAMD_FEATHER_M0,
-// m0 defs ADAFRUIT_FEATHER_M0
-//
-#if defined(ARDUINO_SAMD_FEATHER_M0) || defined(ADAFRUIT_FEATHER_M0)
-// /!\ By default Adafruit Feather M0's pin 6 and DIO1 are not connected.
-// Please ensure they are connected.
-const lmic_pinmap lmic_pins = {
-    .nss = 8,
-    .rxtx = LMIC_UNUSED_PIN,
-    .rst = 4,
-    .dio = {3, 6, LMIC_UNUSED_PIN},
-    .rxtx_rx_active = 0,
-    .rssi_cal = 8,              // LBT cal for the Adafruit Feather M0 LoRa, in dB
-    .spi_freq = 8000000,
-};
-#elif defined(ARDUINO_AVR_FEATHER32U4)
-// Pin mapping for Adafruit Feather 32u4 LoRa, etc.
-// Just like Feather M0 LoRa, but uses SPI at 1MHz; and that's only
-// because MCCI doesn't have a test board; probably higher frequencies
-// will work.
-// /!\ By default Feather 32u4's pin 6 and DIO1 are not connected. Please 
-// ensure they are connected.
-const lmic_pinmap lmic_pins = {
-    .nss = 8,
-    .rxtx = LMIC_UNUSED_PIN,
-    .rst = 4,
-    .dio = {7, 6, LMIC_UNUSED_PIN},
-    .rxtx_rx_active = 0,
-    .rssi_cal = 8,              // LBT cal for the Adafruit Feather 32U4 LoRa, in dB
-    .spi_freq = 1000000,
-};
-#elif defined(ARDUINO_CATENA_4551)
-const lmic_pinmap lmic_pins = {
-        .nss = 7,
-        .rxtx = 29,
-        .rst = 8,
-        .dio = { 25,    // DIO0 (IRQ) is D25
-                 26,    // DIO1 is D26
-                 27,    // DIO2 is D27
-               },
-        .rxtx_rx_active = 1,
-        .rssi_cal = 10,
-        .spi_freq = 8000000     // 8MHz
-};
-#else
-# error "Unknown target"
-#endif
-
 // These callbacks are only used in over-the-air activation, so they are
 // left empty here (we cannot leave them out completely unless
 // DISABLE_JOIN is set in arduino-lmoc/project_config/lmic_project_config.h,
@@ -272,7 +222,23 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   // initialize runtime env
-  os_init();
+  // don't die mysteriously; die noisily.
+  const lmic_pinmap *pPinMap = Arduino_LMIC::GetPinmap_ThisBoard();
+
+  if (pPinMap == nullptr) {
+    pinMode(LED_BUILTIN, OUTPUT);
+    for (;;) {
+      // flash lights, sleep.
+      for (int i = 0; i < 5; ++i) {
+        digitalWrite(LED_BUILTIN, 1);
+        delay(100);
+        digitalWrite(LED_BUILTIN, 0);
+        delay(900);
+      }
+      Serial.println(F("board not known to library; add pinmap or update getconfig_thisboard.cpp"));
+    }
+  }
+  os_init_ex(pPinMap);
 
   // Set up these settings once, and use them for both TX and RX
 #ifdef ARDUINO_ARCH_STM32
