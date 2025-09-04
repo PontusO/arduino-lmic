@@ -4,8 +4,8 @@ This directory contains documentation on the use and implementation of the LMIC.
 
 ## Usage documentation
 
-- [`LMIC-v3.3.0.pdf`](./LMIC-v3.3.0.pdf): API documentation on the LMIC as of 3.3.0.
-- [`LMIC-v3.3.0-redline.pdf`](./LMIC-v3.3.0-redline.pdf): changes in the document since last update, marked up by Litera Workshare Compare.
+- [`LMIC-v5.0.0.pdf`](./LMIC-v5.0.0.pdf): API documentation on the LMIC as of 5.0.0.
+- [`LMIC-v5.0.0-redline.pdf`](./LMIC-v5.0.0-redline.pdf): changes in the document since last update, marked up by Litera Workshare Compare.
 
 ## Background information
 

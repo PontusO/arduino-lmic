@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2016 IBM Corporation.
- * Copyright (c) 2016-2017, 2019 MCCI Corporation.
+ * Copyright (c) 2016-2024, 2019 MCCI Corporation.
  * All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@ static struct {
 
 int os_init_ex (const void *pintable) {
     memset(&OS, 0x00, sizeof(OS));
-    hal_init_ex(pintable);
+    lmic_hal_init_ex(pintable);
     if (! radio_init())
         return 0;
     LMIC_init();
@@ -55,7 +55,7 @@ void os_init() {
 }
 
 ostime_t os_getTime () {
-    return hal_ticks();
+    return lmic_hal_ticks();
 }
 
 // unlink job from queue, return if removed
@@ -75,17 +75,17 @@ static osjob_t** getJobQueue(osjob_t* job) {
 
 // clear scheduled job
 void os_clearCallback (osjob_t* job) {
-    hal_disableIRQs();
+    lmic_hal_disableIRQs();
 
     unlinkjob(getJobQueue(job), job);
 
-    hal_enableIRQs();
+    lmic_hal_enableIRQs();
 }
 
 // schedule immediately runnable job
 void os_setCallback (osjob_t* job, osjobcb_t cb) {
     osjob_t** pnext;
-    hal_disableIRQs();
+    lmic_hal_disableIRQs();
 
     // remove if job was already queued
     unlinkjob(getJobQueue(job), job);
@@ -98,7 +98,7 @@ void os_setCallback (osjob_t* job, osjobcb_t cb) {
     // add to end of run queue
     for(pnext=&OS.runnablejobs; *pnext; pnext=&((*pnext)->next));
     *pnext = job;
-    hal_enableIRQs();
+    lmic_hal_enableIRQs();
 }
 
 // schedule timed job
@@ -109,7 +109,7 @@ void os_setTimedCallback (osjob_t* job, ostime_t time, osjobcb_t cb) {
     if (time == 0)
         time = 1;
 
-    hal_disableIRQs();
+    lmic_hal_disableIRQs();
 
     // remove if job was already queued
     unlinkjob(getJobQueue(job), job);
@@ -128,7 +128,7 @@ void os_setTimedCallback (osjob_t* job, ostime_t time, osjobcb_t cb) {
         }
     }
     *pnext = job;
-    hal_enableIRQs();
+    lmic_hal_enableIRQs();
 }
 
 // execute jobs from timer and from run queue
@@ -140,20 +140,20 @@ void os_runloop () {
 
 void os_runloop_once() {
     osjob_t* j = NULL;
-    hal_processPendingIRQs();
+    lmic_hal_processPendingIRQs();
 
-    hal_disableIRQs();
+    lmic_hal_disableIRQs();
     // check for runnable jobs
     if(OS.runnablejobs) {
         j = OS.runnablejobs;
         OS.runnablejobs = j->next;
-    } else if(OS.scheduledjobs && hal_checkTimer(OS.scheduledjobs->deadline)) { // check for expired timed jobs
+    } else if(OS.scheduledjobs && lmic_hal_checkTimer(OS.scheduledjobs->deadline)) { // check for expired timed jobs
         j = OS.scheduledjobs;
         OS.scheduledjobs = j->next;
     } else { // nothing pending
-        hal_sleep(); // wake by irq (timer already restarted)
+        lmic_hal_sleep(); // wake by irq (timer already restarted)
     }
-    hal_enableIRQs();
+    lmic_hal_enableIRQs();
     if(j) { // run job callback
         j->func(j);
     }

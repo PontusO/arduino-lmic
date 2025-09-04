@@ -209,7 +209,7 @@ void LMICOS_logEventUint32(const char *pMessage, uint32_t datum)
     }
 #endif // LMIC_ENABLE_event_logging
 
-hal_failure_handler_t log_assertion;
+lmic_hal_failure_handler_t log_assertion;
 
 void log_assertion(const char *pMessage, uint16_t line) {
     eventQueue.putEvent(ev_t(-3), pMessage, line);
@@ -369,7 +369,7 @@ void printFcnts(cEventQueue::eventnode_t &e) {
 void printAllRegisters(void) {
     uint8_t regbuf[0x80];
     regbuf[0] = 0;
-    hal_spi_read(1, regbuf + 1, sizeof(regbuf) - 1);
+    lmic_hal_spi_read(1, regbuf + 1, sizeof(regbuf) - 1);
 
     for (unsigned i = 0; i < sizeof(regbuf); ++i) {
         if (i % 16 == 0) {
@@ -381,14 +381,14 @@ void printAllRegisters(void) {
     }
 
     // reset the radio, just in case the register dump caused issues.
-    hal_pin_rst(0);
+    lmic_hal_pin_rst(0);
     delay(2);
-    hal_pin_rst(2);
+    lmic_hal_pin_rst(2);
     delay(6);
 
     // restore the radio to idle.
     const uint8_t opmode = 0x88;    // LoRa and sleep.
-    hal_spi_write(0x81, &opmode, 1);
+    lmic_hal_spi_write(0x81, &opmode, 1);
 }
 #endif
 
@@ -698,7 +698,7 @@ void setup() {
     }
 
     // now that we have a pinmap, initalize the low levels accordingly.
-    hal_set_failure_handler(log_assertion);
+    lmic_hal_set_failure_handler(log_assertion);
     os_init_ex(pPinMap);
 
     // LMIC_reset() doesn't affect callbacks, so we can do this first.

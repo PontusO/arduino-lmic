@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2016 IBM Corporation.
- * Copyright (c) 2018, 2019 MCCI Corporation
+ * Copyright (c) 2018-2024 MCCI Corporation
  * All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,7 @@ LMIC_BEGIN_DECLS
 #define EV(a,b,c) /**/
 #define DO_DEVDB(field1,field2) /**/
 #if !defined(CFG_noassert)
-#define ASSERT(cond) if(!(cond)) hal_failed(__FILE__, __LINE__)
+#define ASSERT(cond) if(!(cond)) lmic_hal_failed(__FILE__, __LINE__)
 #else
 #define ASSERT(cond) /**/
 #endif
