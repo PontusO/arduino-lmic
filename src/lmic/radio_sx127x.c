@@ -31,7 +31,7 @@
 #define LMIC_DR_LEGACY 0
 
 #include "lmic.h"
-
+#if defined(CFG_sx1272_radio) || defined(CFG_sx1276_radio)
 // ----------------------------------------
 // Registers Mapping
 //                                                      // -type-       1272 vs 1276
@@ -379,28 +379,28 @@ static u1_t randbuf[16];
 
 
 static void writeReg (u1_t addr, u1_t data ) {
-    hal_spi_write(addr | 0x80, &data, 1);
+    lmic_hal_spi_write(addr | 0x80, &data, 1);
 }
 
 static u1_t readReg (u1_t addr) {
     u1_t buf[1];
-    hal_spi_read(addr & 0x7f, buf, 1);
+    lmic_hal_spi_read(addr & 0x7f, buf, 1);
     return buf[0];
 }
 
 static void writeBuf (u1_t addr, xref2u1_t buf, u1_t len) {
-    hal_spi_write(addr | 0x80, buf, len);
+    lmic_hal_spi_write(addr | 0x80, buf, len);
 }
 
 static void readBuf (u1_t addr, xref2u1_t buf, u1_t len) {
-    hal_spi_read(addr & 0x7f, buf, len);
+    lmic_hal_spi_read(addr & 0x7f, buf, len);
 }
 
 static void requestModuleActive(bit_t state) {
-    ostime_t const ticks = hal_setModuleActive(state);
+    ostime_t const ticks = lmic_hal_setModuleActive(state);
 
     if (ticks)
-        hal_waitUntil(os_getTime() + ticks);;
+        lmic_hal_waitUntil(os_getTime() + ticks);;
 }
 
 static void writeOpmode(u1_t mode) {
@@ -619,7 +619,7 @@ static void configPower () {
         }
     }
 
-    policy = hal_getTxPowerPolicy(policy, eff_pw, LMIC.freq);
+    policy = lmic_hal_getTxPowerPolicy(policy, eff_pw, LMIC.freq);
 
     switch (policy) {
     default:
@@ -668,9 +668,9 @@ static void configPower () {
     if (req_pw >= 20) {
         policy = LMICHAL_radio_tx_power_policy_20dBm;
             eff_pw = 20;
-    } else if (eff_pw >= 14) {
+    } else if (req_pw >= 14) {
         policy = LMICHAL_radio_tx_power_policy_paboost;
-        if (eff_pw > 17) {
+        if (req_pw > 17) {
             eff_pw = 17;
         } else {
             eff_pw = req_pw;
@@ -684,7 +684,7 @@ static void configPower () {
         }
     }
 
-    policy = hal_getTxPowerPolicy(policy, eff_pw, LMIC.freq);
+    policy = lmic_hal_getTxPowerPolicy(policy, eff_pw, LMIC.freq);
 
     switch (policy) {
     default:
@@ -780,11 +780,11 @@ static void txfsk () {
     writeBuf(RegFifo, LMIC.frame, LMIC.dataLen);
 
     // enable antenna switch for TX
-    hal_pin_rxtx(1);
+    lmic_hal_pin_rxtx(1);
 
     // now we actually start the transmission
     if (LMIC.txend) {
-        u4_t nLate = hal_waitUntil(LMIC.txend); // busy wait until exact tx time
+        u4_t nLate = lmic_hal_waitUntil(LMIC.txend); // busy wait until exact tx time
         if (nLate > 0) {
             LMIC.radio.txlate_ticks += nLate;
             ++LMIC.radio.txlate_count;
@@ -832,11 +832,11 @@ static void txlora () {
     writeBuf(RegFifo, LMIC.frame, LMIC.dataLen);
 
     // enable antenna switch for TX
-    hal_pin_rxtx(1);
+    lmic_hal_pin_rxtx(1);
 
     // now we actually start the transmission
     if (LMIC.txend) {
-        u4_t nLate = hal_waitUntil(LMIC.txend); // busy wait until exact tx time
+        u4_t nLate = lmic_hal_waitUntil(LMIC.txend); // busy wait until exact tx time
         if (nLate) {
             LMIC.radio.txlate_ticks += nLate;
             ++LMIC.radio.txlate_count;
@@ -870,7 +870,7 @@ static void starttx () {
         LMIC_DEBUG_PRINTF("?%s: OPMODE != OPMODE_SLEEP: %#02x\n", __func__, rOpMode);
 #endif
         opmode(OPMODE_SLEEP);
-        hal_waitUntil(os_getTime() + ms2osticks(1));
+        lmic_hal_waitUntil(os_getTime() + ms2osticks(1));
     }
 
     if (LMIC.lbt_ticks > 0) {
@@ -972,14 +972,14 @@ static void rxlora (u1_t rxmode) {
     writeReg(LORARegIrqFlagsMask, ~TABLE_GET_U1(rxlorairqmask, rxmode));
 
     // enable antenna switch for RX
-    hal_pin_rxtx(0);
+    lmic_hal_pin_rxtx(0);
 
     writeReg(LORARegFifoAddrPtr, 0);
     writeReg(LORARegFifoRxBaseAddr, 0);
 
     // now instruct the radio to receive
     if (rxmode == RXMODE_SINGLE) { // single rx
-        u4_t nLate = hal_waitUntil(LMIC.rxtime); // busy wait until exact rx time
+        u4_t nLate = lmic_hal_waitUntil(LMIC.rxtime); // busy wait until exact rx time
         opmode(OPMODE_RX_SINGLE);
         LMICOS_logEventUint32("+Rx LoRa Single", nLate);
         rxlate(nLate);
@@ -1047,11 +1047,11 @@ static void rxfsk (u1_t rxmode) {
     writeReg(RegDioMapping1, MAP_DIO0_FSK_READY|MAP_DIO1_FSK_NOP|MAP_DIO2_FSK_TIMEOUT);
 
     // enable antenna switch for RX
-    hal_pin_rxtx(0);
+    lmic_hal_pin_rxtx(0);
 
     // now instruct the radio to receive
     if (rxmode == RXMODE_SINGLE) {
-        u4_t nLate = hal_waitUntil(LMIC.rxtime); // busy wait until exact rx time
+        u4_t nLate = lmic_hal_waitUntil(LMIC.rxtime); // busy wait until exact rx time
         opmode(OPMODE_RX); // no single rx mode available in FSK
         LMICOS_logEventUint32("+Rx FSK", nLate);
         rxlate(nLate);
@@ -1084,25 +1084,25 @@ static void startrx (u1_t rxmode) {
 //! \pre
 //! Preconditions must be observed, or you'll get hangs during initialization.
 //!
-//! - The `hal_pin_..()` functions must be ready for use.
-//! - The `hal_waitUntl()` function must be ready for use. This may mean that interrupts
+//! - The `lmic_hal_pin_..()` functions must be ready for use.
+//! - The `lmic_hal_waitUntl()` function must be ready for use. This may mean that interrupts
 //!   are enabled.
-//! - The `hal_spi_..()` functions must be ready for use.
+//! - The `lmic_hal_spi_..()` functions must be ready for use.
 //!
-//! Generally, all these are satisfied by a call to `hal_init_with_pinmap()`.
+//! Generally, all these are satisfied by a call to `lmic_hal_init_with_pinmap()`.
 //!
 int radio_init () {
     requestModuleActive(1);
 
     // manually reset radio
 #ifdef CFG_sx1276_radio
-    hal_pin_rst(0); // drive RST pin low
+    lmic_hal_pin_rst(0); // drive RST pin low
 #else
-    hal_pin_rst(1); // drive RST pin high
+    lmic_hal_pin_rst(1); // drive RST pin high
 #endif
-    hal_waitUntil(os_getTime()+ms2osticks(1)); // wait >100us
-    hal_pin_rst(2); // configure RST pin floating!
-    hal_waitUntil(os_getTime()+ms2osticks(5)); // wait 5ms
+    lmic_hal_waitUntil(os_getTime()+ms2osticks(1)); // wait >100us
+    lmic_hal_pin_rst(2); // configure RST pin floating!
+    lmic_hal_waitUntil(os_getTime()+ms2osticks(5)); // wait 5ms
 
     opmode(OPMODE_SLEEP);
 
@@ -1118,7 +1118,7 @@ int radio_init () {
 #error Missing CFG_sx1272_radio/CFG_sx1276_radio
 #endif
     // set the tcxo input, if needed
-    if (hal_queryUsingTcxo())
+    if (lmic_hal_queryUsingTcxo())
         writeReg(RegTcxo, readReg(RegTcxo) | RegTcxo_TcxoInputOn);
 
     // seed 15-byte randomness via noise rssi
@@ -1211,7 +1211,7 @@ void radio_monitor_rssi(ostime_t nTicks, oslmic_radio_rssi_t *pRssi) {
 #elif defined(CFG_sx1272_radio)
     rssiAdjust = SX1272_RSSI_ADJUST;
 #endif
-    rssiAdjust += hal_getRssiCal();
+    rssiAdjust += lmic_hal_getRssiCal();
 
     // zero the results
     rssiMax = 255;
@@ -1220,7 +1220,7 @@ void radio_monitor_rssi(ostime_t nTicks, oslmic_radio_rssi_t *pRssi) {
     rssiN = 0;
 
     // wait for PLLs
-    hal_waitUntil(os_getTime() + SX127X_RX_POWER_UP);
+    lmic_hal_waitUntil(os_getTime() + SX127X_RX_POWER_UP);
 
     // scan for the desired time.
     tBegin = os_getTime();
@@ -1441,3 +1441,4 @@ void os_radio (u1_t mode) {
 ostime_t os_getRadioRxRampup (void) {
     return RX_RAMPUP_DEFAULT;
 }
+#endif // defined(CFG_sx1272_radio) || defined(CFG_sx1276_radio)

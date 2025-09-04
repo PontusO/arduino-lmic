@@ -54,7 +54,7 @@ Check `src/lmic/lmic_config_preconditions.h` and scan the `LMIC_REGION_...` defi
 
 ## Make the appropriate changes in `lmic_config_preconditions.h`
 
-- `LMIC_REGION_SUPPORTED` is a bit mask of all regions supported by the code. Your new region must appear in this list.
+- `LMIC_REGIONS_SUPPORTED` is a bit mask of all regions supported by the code. Your new region must appear in this list.
 - `CFG_LMIC_REGION_MASK` is a bit mask that, when expanded, returns a bitmask for each defined `CFG_...` variable. You must add your `CFG_myregion` symbol to this list.
 - `CFG_region` evaluates to the `LMIC_REGION_...` value for the selected region (as long as only one region is selected). The header files check for this, so you don't have to.
 - `CFG_LMIC_EU_like_MASK` is a bitmask of regions that are EU-like, and `CFG_LMIC_US_like_MASK` is a bitmask of regions that are US-like. Add your region to the appropriate one of these two variables.

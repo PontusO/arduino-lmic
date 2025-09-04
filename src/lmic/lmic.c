@@ -2,7 +2,7 @@
  * Copyright (c) 2014-2016 IBM Corporation.
  * All rights reserved.
  *
- * Copyright (c) 2016-2019 MCCI Corporation.
+ * Copyright (c) 2016-2024 MCCI Corporation.
  * All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -2570,7 +2570,10 @@ static void engineUpdate_inner (void) {
 
     if( (LMIC.opmode & (OP_JOINING|OP_REJOIN|OP_TXDATA|OP_POLL)) != 0 ) {
         // Assuming txChnl points to channel which first becomes available again.
+
+        // set jacc true if we'll transmit a join-accept rather than user data
         bit_t jacc = ((LMIC.opmode & (OP_JOINING|OP_REJOIN)) != 0 ? 1 : 0);
+
         // Find next suitable channel and return availability time
         if( (LMIC.opmode & OP_NEXTCHNL) != 0 ) {
             txbeg = LMIC.txend = LMICbandplan_nextTx(now);
@@ -2594,8 +2597,19 @@ static void engineUpdate_inner (void) {
             goto checkrx;
         }
 #endif // !DISABLE_BEACONS
-        // Earliest possible time vs overhead to setup radio
-        if( txbeg - (now + TX_RAMPUP) < 0 ) {
+
+        //
+        // Compare earliest possible time vs overhead to setup radio, and start
+        // transmit if we can. Otherwise (way below), if we're not tracking a
+        // beacon, we'll simply queue an osjob for the computed txbeg time.
+        //
+        // Per bug #968, the explicit cast to (ostime_t) is needed
+        // (with some versions of GCC) if txbeg is positive and now + TX_RAMPUP is negative
+        // otherwise the compiler falsely assumes that the computation
+        // is positive.
+        //
+        volatile ostime_t tdiff = txbeg - (now + TX_RAMPUP);
+        if( tdiff < 0 ) {
             // We could send right now!
             txbeg = now;
             dr_t txdr = (dr_t)LMIC.datarate;

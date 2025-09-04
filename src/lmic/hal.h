@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2016 IBM Corporation.
- * Copyright (c) 2016, 2018-2019 MCCI Corporation.
+ * Copyright (c) 2016, 2018-2024 MCCI Corporation.
  * All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -42,103 +42,114 @@ extern "C"{
 #endif
 
 // The type of an optional user-defined failure handler routine
-typedef void LMIC_ABI_STD hal_failure_handler_t(const char* const file, const uint16_t line);
+typedef void LMIC_ABI_STD lmic_hal_failure_handler_t(const char* const file, const uint16_t line);
 
 /*
  * initialize hardware (IO, SPI, TIMER, IRQ).
  * This API is deprecated as it uses the const global lmic_pins,
  * which the platform can't control or change.
  */
-void hal_init (void);
+void lmic_hal_init (void);
 
 /*
  * Initialize hardware, passing in platform-specific context
  * The pointer is to a HalPinmap_t.
  */
-void hal_init_ex (const void *pContext);
+void lmic_hal_init_ex (const void *pContext);
 
 /*
  * drive radio RX/TX pins (0=rx, 1=tx). Actual polarity
  * is determined by the value of HalPinmap_t::rxtx_rx_active.
  */
-void hal_pin_rxtx (u1_t val);
+void lmic_hal_pin_rxtx (u1_t val);
 
 /*
  * control radio RST pin (0=low, 1=high, 2=floating)
  */
-void hal_pin_rst (u1_t val);
+void lmic_hal_pin_rst (u1_t val);
 
 /*
  * Perform SPI write transaction with radio chip
  *   - write the command byte 'cmd'
  *   - write 'len' bytes out of 'buf'
  */
-void hal_spi_write(u1_t cmd, const u1_t* buf, size_t len);
+void lmic_hal_spi_write(u1_t cmd, const u1_t* buf, size_t len);
 
 /*
  * Perform SPI read transaction with radio chip
  *   - write the command byte 'cmd'
  *   - read 'len' bytes into 'buf'
  */
-void hal_spi_read(u1_t cmd, u1_t* buf, size_t len);
+void lmic_hal_spi_read(u1_t cmd, u1_t* buf, size_t len);
+
+/*
+ * Perform SPI read transaction with SX126x series radio chip
+ *   - write the command byte 'cmd'
+ *   - write the 'addr_len' register address bytes 'addr'
+ *   - write the 'NOP' byte 0x00
+ *   - read 'buf_len' bytes into 'buf'
+ */
+#if (defined(CFG_sx1261_radio) || defined(CFG_sx1262_radio))
+void lmic_hal_spi_read_sx126x(u1_t cmd, u1_t* addr, size_t addr_len, u1_t* buf, size_t buf_len);
+#endif
 
 /*
  * disable all CPU interrupts.
  *   - might be invoked nested
- *   - will be followed by matching call to hal_enableIRQs()
+ *   - will be followed by matching call to lmic_hal_enableIRQs()
  */
-void hal_disableIRQs (void);
+void lmic_hal_disableIRQs (void);
 
 /*
  * enable CPU interrupts.
  */
-void hal_enableIRQs (void);
+void lmic_hal_enableIRQs (void);
 
 /*
  * return CPU interrupt nesting count
  */
-uint8_t hal_getIrqLevel (void);
+uint8_t lmic_hal_getIrqLevel (void);
 
 /*
  * put system and CPU in low-power mode, sleep until interrupt.
  */
-void hal_sleep (void);
+void lmic_hal_sleep (void);
 
 /*
  * return 32-bit system time in ticks.
  */
-u4_t hal_ticks (void);
+u4_t lmic_hal_ticks (void);
 
 /*
  * busy-wait until specified timestamp (in ticks) is reached. If on-time, return 0,
  * otherwise return the number of ticks we were late.
  */
-u4_t hal_waitUntil (u4_t time);
+u4_t lmic_hal_waitUntil (u4_t time);
 
 /*
  * check and rewind timer for target time.
  *   - return 1 if target time is close
  *   - otherwise rewind timer for target time or full period and return 0
  */
-u1_t hal_checkTimer (u4_t targettime);
+u1_t lmic_hal_checkTimer (u4_t targettime);
 
 /*
  * perform fatal failure action.
  *   - called by assertions
  *   - action could be HALT or reboot
  */
-void hal_failed (const char *file, u2_t line);
+void lmic_hal_failed (const char *file, u2_t line);
 
 /*
  * set a custom hal failure handler routine. The default behaviour, defined in
- * hal_failed(), is to halt by looping infintely.
+ * lmic_hal_failed(), is to halt by looping infintely.
  */
-void hal_set_failure_handler(const hal_failure_handler_t* const);
+void lmic_hal_set_failure_handler (lmic_hal_failure_handler_t*);
 
 /*
  * get the calibration value for radio_rssi
  */
-s1_t hal_getRssiCal (void);
+s1_t lmic_hal_getRssiCal (void);
 
 /*
  * control the radio state
@@ -146,10 +157,19 @@ s1_t hal_getRssiCal (void);
  *   - if val == 1, turn tcxo on and otherwise prep for activity
  *   - return the number of ticks that we need to wait
  */
-ostime_t hal_setModuleActive (bit_t val);
+ostime_t lmic_hal_setModuleActive (bit_t val);
 
-/* find out if we're using Tcxo */
-bit_t hal_queryUsingTcxo(void);
+/* find out if we're using Tcxo controlled by a host pin */
+bit_t lmic_hal_queryUsingTcxo(void);
+
+/* SX126x function: find out if the board is configured for DC-DC regulator control */
+bit_t lmic_hal_queryUsingDcdc(void);
+
+/* SX126x function: find out if the board is configured to control the RF switch with modem DIO2 */
+bit_t lmic_hal_queryUsingDIO2AsRfSwitch(void);
+
+/* SX126x function: find out if the board is configured to control a TCXO with modem DIO3 */
+bit_t lmic_hal_queryUsingDIO3AsTCXOSwitch(void);
 
 /* represent the various radio TX power policy */
 enum	{
@@ -163,20 +183,21 @@ enum	{
  * to be used on this board, given our desires and
  * requested power.
  */
-uint8_t hal_getTxPowerPolicy(
+uint8_t lmic_hal_getTxPowerPolicy(
 	u1_t inputPolicy,
 	s1_t requestedPower,
 	u4_t freq
 	);
 
-void hal_pollPendingIRQs_helper();
-void hal_processPendingIRQs(void);
+void lmic_hal_pollPendingIRQs_helper();
+void lmic_hal_processPendingIRQs(void);
+bit_t lmic_hal_radio_spi_is_busy();
 
 /// \brief check for any pending interrupts: stub if interrupts are enabled.
-static inline void hal_pollPendingIRQs(void)
+static inline void lmic_hal_pollPendingIRQs(void)
 	{
 #if !defined(LMIC_USE_INTERRUPTS)
-	hal_pollPendingIRQs_helper();
+	lmic_hal_pollPendingIRQs_helper();
 #endif /* !defined(LMIC_USE_INTERRUPTS) */
 	}
 

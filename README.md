@@ -1,6 +1,7 @@
 # Arduino-LMIC library ("MCCI LoRaWAN LMIC Library")
 
-[![GitHub release](https://img.shields.io/github/release/mcci-catena/arduino-lmic.svg)](https://github.com/mcci-catena/arduino-lmic/releases/latest) [![GitHub commits](https://img.shields.io/github/commits-since/mcci-catena/arduino-lmic/latest.svg)](https://github.com/mcci-catena/arduino-lmic/compare/v4.1.1...master) [![Arduino CI](https://img.shields.io/github/workflow/status/mcci-catena/arduino-lmic/Arduino%20CI)](https://github.com/mcci-catena/arduino-lmic/actions)
+[![GitHub release](https://img.shields.io/github/release/mcci-catena/arduino-lmic.svg)](https://github.com/mcci-catena/arduino-lmic/releases/latest) [![GitHub commits](https://img.shields.io/github/commits-since/mcci-catena/arduino-lmic/latest.svg)](https://github.com/mcci-catena/arduino-lmic/compare/v5.0.1...master) [![Arduino CI](https://img.shields.io/github/actions/workflow/status/mcci-catena/arduino-lmic/ci-arduinocli.yml?branch-master)](https://github.com/mcci-catena/arduino-lmic/actions)
+<!-- lmic document is v5.0.0, don't forget to update -->
 
 **Contents:**
 
@@ -41,7 +42,7 @@
 	- [Controlling use of interrupts](#controlling-use-of-interrupts)
 	- [Disabling PING](#disabling-ping)
 	- [Disabling Beacons](#disabling-beacons)
-	- [Enabling Network Time Support](#enabling-network-time-support)
+	- [Enabling/Disabling Network Time Support](#enablingdisabling-network-time-support)
 	- [Rarely changed variables](#rarely-changed-variables)
 		- [Changing debug output](#changing-debug-output)
 		- [Getting debug from the RF library](#getting-debug-from-the-rf-library)
@@ -60,17 +61,6 @@
 - [Supported hardware](#supported-hardware)
 - [Pre-Integrated Boards](#pre-integrated-boards)
 - [PlatformIO](#platformio)
-- [Manual configuration](#manual-configuration)
-	- [Power](#power)
-	- [SPI](#spi)
-	- [DIO pins](#dio-pins)
-	- [Reset](#reset)
-	- [RXTX](#rxtx)
-	- [RXTX Polarity](#rxtx-polarity)
-	- [Pin mapping](#pin-mapping)
-		- [Advanced initialization](#advanced-initialization)
-		- [HalConfiguration_t methods](#halconfiguration_t-methods)
-		- [LoRa Nexus by Ideetron](#lora-nexus-by-ideetron)
 - [Example Sketches](#example-sketches)
 - [Timing](#timing)
 	- [Controlling protocol timing](#controlling-protocol-timing)
@@ -172,7 +162,7 @@ us know (creating a GitHub issue is probably the best way for that).
 
 ### PDF/Word Documentation
 
-The `doc` directory contains [LMIC-v4.1.0.pdf](doc/LMIC-v4.1.0.pdf), which documents the library APIs and use. It's based on the original IBM documentation, but has been adapted for this version of the library. However, as this library is used for more than Arduino, that document is supplemented by Arduino-specific details in this document.
+The `doc` directory contains [LMIC-v5.0.0.pdf](doc/LMIC-v5.0.0.pdf), which documents the library APIs and use. It's based on the original IBM documentation, but has been adapted for this version of the library. However, as this library is used for more than Arduino, that document is supplemented by Arduino-specific details in this document.
 
 ### Adding Regions
 
@@ -310,6 +300,14 @@ Configures the library for use with an sx1272 transceiver.
 
 Configures the library for use with an sx1276 transceiver.
 
+`#define CFG_sx1261_radio 1`
+
+Configures the library for use with an sx1261 transceiver.
+
+`#define CFG_sx1262_radio 1`
+
+Configures the library for use with an sx1262 transceiver.
+
 ### Controlling use of interrupts
 
 `#define LMIC_USE_INTERRUPTS`
@@ -335,7 +333,7 @@ Enabling beacon handling allows tracking of network time, and is required if you
 
 By default, beacon support is included in the library.
 
-### Enabling Network Time Support
+### Enabling/Disabling Network Time Support
 
 `#define LMIC_ENABLE_DeviceTimeReq  number  /* boolean: 0 or non-zero */`
 
@@ -452,13 +450,15 @@ The compliance test script includes a suitable logging implementation; the other
 ## Supported hardware
 
 This library is intended to be used with plain LoRa transceivers,
-connecting to them using SPI. In particular, the SX1272 and SX1276
+connected to the Arduino CPU using a SPI bus. In particular:
+
+* The SX1272, SX1276
 families are supported (which should include SX1273, SX1277, SX1278 and
 SX1279 which only differ in the available frequencies, bandwidths and
 spreading factors). It has been tested with both SX1272 and SX1276
-chips, using the Semtech SX1272 evaluation board and the HopeRF RFM92
-and RFM95 boards (which supposedly contain an SX1272 and SX1276 chip
-respectively).
+chips on a variety of platforms.
+
+* The SX1261 and SX1262 families are supported. This has been tested with Heltec and TTGo boards.
 
 This library contains a full LoRaWAN stack and is intended to drive
 these Transceivers directly. It is *not* intended to be used with
@@ -468,9 +468,9 @@ LoRaWAN stack and exposes a high-level serial interface instead of the
 low-level SPI transceiver interface.
 
 This library is intended to be used inside the Arduino environment. It
-should be architecture-independent. Users have tested this on AVR, ARM, Xtensa-based, and RISC-V based system.
+should be architecture-independent. Users have tested this on AVR, ARM, Xtensa-based, ESP32, and RISC-V based systems.
 
-This library can be quite heavy on small systems, especially if the fairly small ATmega
+This library can be quite heavy on 8-bit systems, especially if the fairly small ATmega
 328p (such as in the Arduino Uno) is used. In the default configuration,
 the available 32K flash space is nearly filled up (this includes some
 debug output overhead, though). By disabling some features in `project_config/lmic_project_config.h`
@@ -505,6 +505,8 @@ The following boards are pre-integrated.
 
 > To help you know if you have to worry, we'll call such boards "pre-integrated" and prefix each section with suitable guidance.
 
+If your board is not pre-integrated, refer to [`HOWTO-Manually-Configure.md`](doc/HOWTO-Manually-Configure.md).
+
 ## PlatformIO
 
 For use with PlatformIO, the `lmic_project_config.h` has to be disabled with the flag `ARDUINO_LMIC_PROJECT_CONFIG_H_SUPPRESS`.
@@ -518,252 +520,6 @@ build_flags =
     -D ARDUINO_LMIC_PROJECT_CONFIG_H_SUPPRESS
     -D CFG_eu868=1
     -D CFG_sx1276_radio=1
-```
-
-## Manual configuration
-
-If your desired transceiver board is not pre-integrated, you need to provide the library with the required information.
-
-You may need to wire up your transceiver. The exact
-connections are a bit dependent on the transceiver board and Arduino
-used, so this section tries to explain what each connection is for and
-in what cases it is (not) required.
-
-Note that the SX127x module runs at 3.3V and likely does not like 5V on
-its pins (though the datasheet is not say anything about this, and my
-transceiver did not obviously break after accidentally using 5V I/O for
-a few hours). To be safe, make sure to use a level shifter, or an
-Arduino running at 3.3V. The Semtech evaluation board has 100 ohm resistors in
-series with all data lines that might prevent damage, but I would not
-count on that.
-
-### Power
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-The SX127x transceivers need a supply voltage between 1.8V and 3.9V.
-Using a 3.3V supply is typical. Some modules have a single power pin
-(like the HopeRF modules, labeled 3.3V) but others expose multiple power
-pins for different parts (like the Semtech evaluation board that has
-`VDD_RF`, `VDD_ANA` and `VDD_FEM`), which can all be connected together.
-Any *GND* pins need to be connected to the Arduino *GND* pin(s).
-
-### SPI
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-The primary way of communicating with the transceiver is through SPI
-(Serial Peripheral Interface). This uses four pins: MOSI, MISO, SCK and
-SS. The former three need to be directly connected: so MOSI to MOSI,
-MISO to MISO, SCK to SCK. Where these pins are located on your Arduino
-varies, see for example the "Connections" section of the [Arduino SPI
-documentation](SPI).
-
-The SS (slave select) connection is a bit more flexible. On the SPI
-slave side (the transceiver), this must be connect to the pin
-(typically) labeled *NSS*. On the SPI master (Arduino) side, this pin
-can connect to any I/O pin. Most Arduinos also have a pin labeled "SS",
-but this is only relevant when the Arduino works as an SPI slave, which
-is not the case here. Whatever pin you pick, you need to tell the
-library what pin you used through the pin mapping (see [below](#pin-mapping)).
-
-[SPI]: https://www.arduino.cc/en/Reference/SPI
-
-### DIO pins
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-The DIO (digital I/O) pins on the SX127x can be configured
-for various functions. The LMIC library uses them to get instant status
-information from the transceiver. For example, when a LoRa transmission
-starts, the DIO0 pin is configured as a TxDone output. When the
-transmission is complete, the DIO0 pin is made high by the transceiver,
-which can be detected by the LMIC library.
-
-The LMIC library needs only access to DIO0, DIO1 and DIO2, the other
-DIOx pins can be left disconnected. On the Arduino side, they can
-connect to any I/O pin. If interrupts are used, the accuracy of timing
-will be improved, particularly the rest of your `loop()` function has
-lengthy calculations; but in that case, the enabled DIO pins must all
-support rising-edge interrupts. See the [Timing](#timing) section below.
-
-In LoRa mode the DIO pins are used as follows:
-
-* DIO0: TxDone and RxDone
-* DIO1: RxTimeout
-
-In FSK mode they are used as follows::
-
-* DIO0: PayloadReady and PacketSent
-* DIO2: TimeOut
-
-Both modes need only 2 pins, but the transceiver does not allow mapping
-them in such a way that all needed interrupts map to the same 2 pins.
-So, if both LoRa and FSK modes are used, all three pins must be
-connected.
-
-The pins used on the Arduino side should be configured in the pin
-mapping in your sketch, by setting the values of `lmic_pinmap::dio[0]`, `[1]`, and `[2]` (see [below](#pin-mapping)).
-
-### Reset
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-The transceiver has a reset pin that can be used to explicitly reset
-it. The LMIC library uses this to ensure the chip is in a consistent
-state at startup. In practice, this pin can be left disconnected, since
-the transceiver will already be in a sane state on power-on, but
-connecting it might prevent problems in some cases.
-
-On the Arduino side, any I/O pin can be used. The pin number used must
-be configured in the pin mapping `lmic_pinmap::rst` field (see [below](#pin-mapping)).
-
-### RXTX
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-The transceiver contains two separate antenna connections: One for RX
-and one for TX. A typical transceiver board contains an antenna switch
-chip, that allows switching a single antenna between these RX and TX
-connections.  Such a antenna switcher can typically be told what
-position it should be through an input pin, often labeled *RXTX*.
-
-The easiest way to control the antenna switch is to use the *RXTX* pin
-on the SX127x transceiver. This pin is automatically set high during TX
-and low during RX. For example, the HopeRF boards seem to have this
-connection in place, so they do not expose any *RXTX* pins and the pin
-can be marked as unused in the pin mapping.
-
-Some boards do expose the antenna switcher pin, and sometimes also the
-SX127x *RXTX* pin. For example, the SX1272 evaluation board calls the
-former *FEM_CTX* and the latter *RXTX*. Again, simply connecting these
-together with a jumper wire is the easiest solution.
-
-Alternatively, or if the SX127x *RXTX* pin is not available, LMIC can be
-configured to control the antenna switch. Connect the antenna switch
-control pin (e.g. *FEM_CTX* on the Semtech evaluation board) to any I/O
-pin on the Arduino side, and configure the pin used in the pin map (see
-[below](#pin-mapping)).
-
-The configuration entry `lmic_pinmap::rxtx` configures the pin to be used for the *RXTX* control function, in terms of the Arduino `wire.h` digital pin number. If set to `LMIC_UNUSED_PIN`, then the library assumes that software does not need to control the antenna switch.
-
-### RXTX Polarity
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-If an external switch is used, you also must specify the polarity. Some modules want *RXTX* to be high for transmit, low for receive; Others want it to be low for transmit, high for receive. The Murata module, for example, requires that *RXTX* be *high* for receive, *low* for transmit.
-
-The configuration entry `lmic_pinmap::rxtx_rx_active` should be set to the state to be written to the *RXTX* pin to make the receiver active. The opposite state is written to make the transmitter active. If `lmic_pinmap::rxtx` is `LMIC_UNUSED_PIN`, then the value of `lmic_pinmap::rxtx_rx_active` is ignored.
-
-### Pin mapping
-
-> If you're using a [pre-integrated board](#pre-integrated-boards), you can skip this section.
-
-Refer to the documentation on your board for the required settings.
-
-Remember, for pre-integrated boards, you don't worry about this.
-
-We have details for the following manually-configured boards here:
-
-- [LoRa Nexus by Ideetron](#lora-nexus-by-ideetron)
-
-If your board is not configured, you need at least to provide your own `lmic_pinmap`. As described above, a variety of configurations are possible. To tell the LMIC library how your board is configured, you must declare a variable containing a pin mapping struct in your sketch file.  If you call `os_init()` to initialize the LMIC, you must name this structure `lmic_pins`. If you call `os_init_ex()`, you may name the structure what you like, but you pass a pointer as the parameter to `os_init_ex()`.
-
-Here's an example of a simple initialization:
-
-```c++
-  lmic_pinmap lmic_pins = {
-    .nss = 6,
-    .rxtx = LMIC_UNUSED_PIN,
-    .rst = 5,
-    .dio = {2, 3, 4},
-    // optional: set polarity of rxtx pin.
-    .rxtx_rx_active = 0,
-    // optional: set RSSI cal for listen-before-talk
-    // this value is in dB, and is added to RSSI
-    // measured prior to decision.
-    // Must include noise guardband! Ignored in US,
-    // EU, IN, other markets where LBT is not required.
-    .rssi_cal = 0,
-    // optional: override LMIC_SPI_FREQ if non-zero
-    .spi_freq = 0,
-  };
-```
-
-The names refer to the pins on the transceiver side, the numbers refer
-to the Arduino pin numbers (to use the analog pins, use constants like
-`A0`). For the DIO pins, the three numbers refer to DIO0, DIO1 and DIO2
-respectively. Any pins that are not needed should be specified as
-`LMIC_UNUSED_PIN`. The NSS and dio0 pins are required. The others can
-potentially left out (depending on the environments and requirements,
-see the notes above for when a pin can or cannot be left out).
-
-#### Advanced initialization
-
-In some boards require much more advanced management. The LMIC has a very flexible framework to support this, but it requires you to do some C++ work.
-
-1. You must define a new class derived from `Arduino_LMIC::HalConfiguration_t`. (We'll call this `cMyHalConfiguration_t`).
-
-2. This class *may* define overrides for several methods (discussed below).
-
-3. You must create an instance of your class, e.g.
-
-    ```c++
-    cMyHalConfiguration_t myHalConfigInstance;
-    ```
-
-4. You add another entry in your `lmic_pinmap`, `pConfig = &myHalConfigInstance`, to link your pin-map to your object.
-
-The full example looks like this:
-
-```c++
-class cMyHalConfiguration_t : public Arduino_LMIC::HalConfiguration_t
-  {
-public:
-  // ...
-  // put your method function override declarations here.
-
-  // this example uses RFO at 10 dBm or less, PA_BOOST up to 17 dBm,
-  // or the high-power mode above 17 dBm. In other words, it lets the
-  // LMIC-determined policy determine what's to be done.
-
-  virtual TxPowerPolicy_t getTxPowerPolicy(
-    TxPowerPolicy_t policy,
-    int8_t requestedPower,
-    uint32_t frequency
-    ) override
-    {
-    return policy;
-    }
-  };
-```
-
-#### HalConfiguration_t methods
-
-- `ostime_t setModuleActive(bool state)` is called by the LMIC to make the module active or to deactivate it (the value of `state` is true to activate).  The implementation must turn power to the module on and otherwise prepare for it to go to work, and must return the number of OS ticks to wait before starting to use the radio.
-
-- `void begin(void)` is called during initialization, and is your code's chance to do any early setup.
-
-- `void end(void)` is (to be) called during late shutdown.  (Late shutdown is not implemented yet; but we wanted to add the API for consistency.)
-
-- `bool queryUsingTcxo(void)` shall return `true` if the module uses a TCXO; `false` otherwise.
-
-- `TxPowerPolicy_t getTxPowerPolicy(TxPowerPolicy_t policy, int8_t requestedPower, uint32_t frequency)` allows you to override the LMIC's selection of transmit power. If not provided, the default method forces the LMIC to use PA_BOOST mode. (We chose to do this because we found empirically that the Hope RF module doesn't support RFO, and because legacy LMIC code never used anything except PA_BOOST mode.)
-
-Caution: the LMIC has no way of knowing whether the mode you return makes sense. Use of 20 dBm mode without limiting duty cycle can over-stress your module. The LMIC currently does not have any code to duty-cycle US transmissions at 20 dBm. If properly limiting transmissions to 400 milliseconds, a 1% duty-cycle means at most one message every 40 seconds. This shouldn't be a problem in practice, but buggy upper level software still might do things more rapidly.
-
-<!-- there are links to the following section, so be careful when renaming -->
-#### LoRa Nexus by Ideetron
-
-This board uses the following pin mapping:
-
-```c++
-  const lmic_pinmap lmic_pins = {
-      .nss = 10,
-      .rxtx = LMIC_UNUSED_PIN,
-      .rst = LMIC_UNUSED_PIN, // hardwired to AtMega RESET
-      .dio = {4, 5, 7},
-  };
 ```
 
 ## Example Sketches
@@ -794,6 +550,9 @@ This library provides several examples.
    is a further refinement of `ttn-otaa-feather-us915.ino`. It measures and
    transmits temperature and relative humidity using a DHT22 sensor. It's only
    been tested with Feather M0-family products.
+
+- [`ttn-otaa-sx1262.ino`](examples/ttn-otaa-sx1262/ttn-otaa-sx1262.ino) is a version of `ttn-otaa.ino` that demonstrates [Advanced initialization](doc/HOWTO-Manually-Configure.md#advanced-initialization) techniques
+  that will be required for some boards, in particular, any SX126x transceiver that is not pre-integrated.
 
 - [`raw.ino`](examples/raw/raw.ino) shows how to access the radio on a somewhat low level,
    and allows to send raw (non-LoRaWAN) packets between nodes directly.
@@ -929,13 +688,13 @@ The IBM LMIC used as the basis for this code disables interrupts while the radio
 
 To avoid this, the LMIC processes events in several steps; these steps ensure that `radio_irq_handler_v2()` is only called at predictable times.
 
-1. If interrupts are enabled via `LMIC_USE_INTERRUPTS`, hardware interrupts catch the time of the interrupt and record that the interrupt occurred. These routines rely on hardware edge-sensitive interrupts. If your hardware interrupts are level-sensitive, you must mask the interrupt somehow at the ISR. You can't use SPI routines to talk to the radio, because this may leave the SPI system and the radio in undefined states. In this configuration, `hal_io_pollIRQs()` exists but is a no-op.
+1. If interrupts are enabled via `LMIC_USE_INTERRUPTS`, hardware interrupts catch the time of the interrupt and record that the interrupt occurred. These routines rely on hardware edge-sensitive interrupts. If your hardware interrupts are level-sensitive, you must mask the interrupt somehow at the ISR. You can't use SPI routines to talk to the radio, because this may leave the SPI system and the radio in undefined states. In this configuration, `lmic_hal_io_pollIRQs()` exists but is a no-op.
 
-2. If interrupts are not enabled via `LMIC_USE_INTERRUPTS`, the digital I/O lines are polled every so often by calling the routine `hal_io_pollIRQs()`. This routine watches for edges on the relevant digital I/O lines, and records the time of transition.
+2. If interrupts are not enabled via `LMIC_USE_INTERRUPTS`, the digital I/O lines are polled every so often by calling the routine `lmic_hal_io_pollIRQs()`. This routine watches for edges on the relevant digital I/O lines, and records the time of transition.
 
-3. The LMIC `os_runloop_once()` routine calls `hal_processPendingIRQs()`. This routine uses the timestamps captured by the hardware ISRs and `hal_io_pollIRQs()` to invoke `radio_irq_hander_v2()` with the appropriate information.  `hal_processPendingIRQs()` in turn calls `hal_io_pollIRQs()` (in case interrupts are not configured).
+3. The LMIC `os_runloop_once()` routine calls `lmic_hal_processPendingIRQs()`. This routine uses the timestamps captured by the hardware ISRs and `lmic_hal_io_pollIRQs()` to invoke `radio_irq_hander_v2()` with the appropriate information.  `lmic_hal_processPendingIRQs()` in turn calls `lmic_hal_io_pollIRQs()` (in case interrupts are not configured).
 
-4. For compatibility with older versions of the Arduino LMIC, `hal_enableIRQs()` also calls `hal_io_pollIRQs()` when enabling interrupts. However, it does not dispatch the interrupts to `radio_irq_handler_v2()`; this must be done by a subsequent call to `hal_processPendingIRQs()`.
+4. For compatibility with older versions of the Arduino LMIC, `lmic_hal_enableIRQs()` also calls `lmic_hal_io_pollIRQs()` when enabling interrupts. However, it does not dispatch the interrupts to `radio_irq_handler_v2()`; this must be done by a subsequent call to `lmic_hal_processPendingIRQs()`.
 
 ## Downlink data rate
 
@@ -1244,9 +1003,20 @@ function uflt12f(rawUflt12)
 
 ## Release History
 
-- HEAD has the following changes.
+- v5.0.1 has the following changes.
+
+  - Work around different behavior for `int32_t` wrap in newer GCC versions. ([#968](https://github.com/mcci-catena/arduino-lmic/issues/968), `v5.0.1-pre1`)
+
+- v5.0.0 has the following changes.
 
   - Enable device time request by default in config file ([#840](https://github.com/mcci-catena/arduino-lmic/issues/840)).
+  - Add support for SX1261/SX1262 radios ([#949](https://github.com/mcci-catena/arduino-lmic/pull/949)).
+  - Refactor `README.md` a little and put little used configuration info in a separate file.
+  - Change all exports named `hal_*` to `lmic_hal_*`. This is a breaking change, and so the version number is advanced to 5.0.0. ([#714](https://github.com/mcci-catena/arduino-lmic/issues/714))
+  - Fix typos in documentation ([#956](https://github.com/mcci-catena/arduino-lmic/pull/956), [#879](https://github.com/mcci-catena/arduino-lmic/pull/879)).
+  - Initialize DHT sensor in ttn-abp-feather-us915-dht22 example ([#902](https://github.com/mcci-catena/arduino-lmic/pull/902))
+  - Fix configPower for sx1272 ([#894](https://github.com/mcci-catena/arduino-lmic/pull/894))
+  - Enable device time by request ([#840](https://github.com/mcci-catena/arduino-lmic/pull/840))
 
 - v4.1.1 is a patch release.
 
@@ -1307,7 +1077,7 @@ function uflt12f(rawUflt12)
   - [#443](https://github.com/mcci-catena/arduino-lmic/pull/443) addresses a number of problems found in cooperation with [RedwoodComm](https://redwoodcomm.com). They suggested a timing improvement to speed testing; this lead to the discovery of a number of problems. Some were in the compliance framework, but one corrects timing for very high spreading factors, several ([#442](https://github.com/mcci-catena/arduino-lmic/issues/442), [#436](https://github.com/mcci-catena/arduino-lmic/issues/438), [#435](https://github.com/mcci-catena/arduino-lmic/issues/435), [#434](https://github.com/mcci-catena/arduino-lmic/issues/434) fix glaring problems in FSK support; [#249](https://github.com/mcci-catena/arduino-lmic/issues/249) greatly enhances stability by making API calls much less likely to crash the LMIC if it's active. Version is v3.0.99.3.
   - [#388](https://github.com/mcci-catena/arduino-lmic/issues/388), [#389](https://github.com/mcci-catena/arduino-lmic/issues/390), [#390](https://github.com/mcci-catena/arduino-lmic/issues/390) change the LMIC to honor the maximum frame size for a given DR in the current region. This proves to be a breaking change for many applications, especially in the US, because DR0 in the US supports only an 11-byte payload, and many apps were ignoring this. Additional error codes were defined so that apps can detect and recover from this situation, but they must detect; otherwise they run the risk of being blocked from the network by the LMIC.  Because of this change, the next version of the LMIC will be V3.1 or higher, and the LMIC version for development is bumped to 3.0.99.0.
   - [#401](https://github.com/mcci-catena/arduino-lmic/issues/401) adds 865 MHz through 868 MHz to the "1%" band for EU.
-  - [#395](https://github.com/mcci-catena/arduino-lmic/pull/395) corrects pin-mode initialization if using `hal_interrupt_init()`.
+  - [#395](https://github.com/mcci-catena/arduino-lmic/pull/395) corrects pin-mode initialization if using `lmic_hal_interrupt_init()`.
   - [#385](https://github.com/mcci-catena/arduino-lmic/issues/385) corrects an error handling data rate selection for `TxParamSetupReq`, found in US-915 certification testing. (v2.3.2.71)
   - [#378](https://github.com/mcci-catena/arduino-lmic/pull/378) completely reworks MAC downlink handling. Resulting code passes the LoRaWAN V1.5 EU certification test. (v2.3.2.70)
   - [#360](https://github.com/mcci-catena/arduino-lmic/issues/360) adds support for the KR-920 regional plan.
@@ -1329,7 +1099,7 @@ function uflt12f(rawUflt12)
 
 - Interim bug fixes: added a new API (`radio_irq_handler_v2()`), which allows the caller to provide the timestamp of the interrupt. This allows for more accurate timing, because the knowledge of interrupt overhead can be moved to a platform-specific layer ([#148](https://github.com/mcci-catena/arduino-lmic/issues/148)). Fixed compile issues on ESP32 ([#140](https://github.com/mcci-catena/arduino-lmic/issues/140) and [#153](https://github.com/mcci-catena/arduino-lmic/issues/150)). We added ESP32 and 32u4 as targets in CI testing. We switched CI testing to Arduino IDE 1.8.7.
    Fixed issue [#161](https://github.com/mcci-catena/arduino-lmic/issues/161) selecting the Japan version of as923 using `CFG_as923jp` (selecting via `CFG_as923` and `LMIC_COUNTRY_CODE=LMIC_COUNTRY_CODE_JP` worked).
-   Fixed [#38](https://github.com/mcci-catena/arduino-lmic/issues/38) -- now any call to hal_init() will put the NSS line in the idle (high/inactive) state. As a side effect, RXTX is initialized, and RESET code changed to set value before transitioning state. Likely no net effect, but certainly more correct.
+   Fixed [#38](https://github.com/mcci-catena/arduino-lmic/issues/38) -- now any call to lmic_hal_init() will put the NSS line in the idle (high/inactive) state. As a side effect, RXTX is initialized, and RESET code changed to set value before transitioning state. Likely no net effect, but certainly more correct.
 
 - V2.2.2 adds `ttn-abp-feather-us915-dht22.ino` example, and fixes some documentation typos. It also fixes encoding of the `Margin` field of the `DevStatusAns` MAC message ([#130](https://github.com/mcci-catena/arduino-lmic/issues/130)).  This makes Arduino LMIC work with networks implemented with [LoraServer](https://www.loraserver.io/).
 
@@ -1368,6 +1138,8 @@ This library started from the IBM V1.5 open-source code.
 - [`@manuelbl`](https://github.com/manuelbl) contributed numerous ESP32-related patches and improvements.
 
 - [`@ngraziano`](https://github.com/ngraziano) did extensive testing and contributed numerous ADR-related patches.
+
+- Tristan Webber ([`@TristanWebber`](https://github.com/TristanWebber)) contributed sx1261 and sx1262 support.
 
 There are many others, who have contributed code and also participated in discussions, performed testing, reported problems and results. Thanks to all who have participated. We hope to use something like [All Contributors](https://https://allcontributors.org/) to help keep this up to date, but so far the automation isn't working.
 

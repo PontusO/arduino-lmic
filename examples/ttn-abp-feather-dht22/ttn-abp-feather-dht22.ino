@@ -234,6 +234,8 @@ void setup() {
     Serial.begin(115200);
     delay(100);
     Serial.println(F("Starting"));
+    
+    dht.begin();
 
     // LMIC init
     os_init();

@@ -61,7 +61,7 @@ struct HalPinmap_t {
 	int8_t rssi_cal;	// byte 7: cal in dB -- added to RSSI
 				//   measured prior to decision.
 				//   Must include noise guardband!
-  HardwareSPI *spi;   // SPI interface used
+	HardwareSPI *spi;   // SPI interface used
 	uint32_t spi_freq;	// bytes 8..11: SPI freq in Hz.
 	// optional pointer to configuration object (bytes 12..15)
 	HalConfiguration_t *pConfig;
@@ -91,7 +91,11 @@ public:
 
 	virtual void begin(void) {}
 	virtual void end(void) {}
+	virtual uint8_t queryBusyPin(void) { return HalPinmap_t::LMIC_UNUSED_PIN; }
 	virtual bool queryUsingTcxo(void) { return false; }
+	virtual bool queryUsingDcdc(void) { return false; }
+	virtual bool queryUsingDIO2AsRfSwitch(void) { return false; }
+	virtual bool queryUsingDIO3AsTCXOSwitch(void) { return false; }
 
 	// compute desired transmit power policy.  HopeRF needs
 	// (and previous versions of this library always chose)
@@ -111,7 +115,7 @@ public:
 		}
 	};
 
-bool hal_init_with_pinmap(const HalPinmap_t *pPinmap);
+bool lmic_hal_init_with_pinmap(const HalPinmap_t *pPinmap);
 
 }; // end namespace Arduino_LMIC
 
