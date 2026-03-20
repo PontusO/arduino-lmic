@@ -24,58 +24,63 @@ Author:
 #include "../hal/hal.h"
 
 namespace Arduino_LMIC {
-  class HalConfiguration_ChallengerZP_RP2350_LoRa_t : public HalConfiguration_t {
-    public:
-        enum DIGITAL_PINS : uint8_t {
-                SX1262_NSS = PIN_SX1262_SS,
-                SX1262_NRESET = PIN_SX1262_RSTN,
-                SX1262_BUSY = PIN_SX1262_BUSY,
-                SX1262_DIO1 = PIN_SX1262_DIO1,
-                SX1262_DIO2 = HalPinmap_t::UNUSED_PIN,
-                SX1262_DIO3 = HalPinmap_t::UNUSED_PIN,
-                SX1262_ANT_SWITCH_RX = HalPinmap_t::UNUSED_PIN,
-                SX1262_ANT_SWITCH_TX_BOOST = HalPinmap_t::UNUSED_PIN,
-                SX1262_ANT_SWITCH_TX_RFO = HalPinmap_t::UNUSED_PIN,
-                VDD_BOOST_ENABLE = HalPinmap_t::UNUSED_PIN,
-        };
+class HalConfiguration_ChallengerZP_RP2350_LoRa_t : public HalConfiguration_t 
+	{
+public:
+	enum DIGITAL_PINS : uint8_t 
+		{
+		SX1262_NSS = PIN_SX1262_SS,
+		SX1262_NRESET = PIN_SX1262_RSTN,
+		SX1262_BUSY = PIN_SX1262_BUSY,
+		SX1262_DIO1 = PIN_SX1262_DIO1,
+		SX1262_DIO2 = HalPinmap_t::UNUSED_PIN,
+		SX1262_DIO3 = HalPinmap_t::UNUSED_PIN,
+		SX1262_ANT_SWITCH_RX = HalPinmap_t::UNUSED_PIN,
+		SX1262_ANT_SWITCH_TX_BOOST = HalPinmap_t::UNUSED_PIN,
+		SX1262_ANT_SWITCH_TX_RFO = HalPinmap_t::UNUSED_PIN,
+		VDD_BOOST_ENABLE = HalPinmap_t::UNUSED_PIN,
+		};
 
 
-    	virtual void begin(void) override {
-    		pinMode(HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS, OUTPUT);
-    		digitalWrite(HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS, 1);
-    	}
+	virtual void begin(void) override 
+	{
+		pinMode(HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS, OUTPUT);
+		digitalWrite(HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS, 1);
+	}
 
-        virtual u1_t queryBusyPin(void) override { return HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_BUSY; };
+	virtual u1_t queryBusyPin(void) override { return HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_BUSY; };
         
-        virtual bool queryUsingDcdc(void) override { return true; };
+	virtual bool queryUsingDcdc(void) override { return true; };
 
-        virtual bool queryUsingDIO2AsRfSwitch(void) override { return true; };
+	virtual bool queryUsingDIO2AsRfSwitch(void) override { return true; };
 
-        virtual bool queryUsingDIO3AsTCXOSwitch(void) override { return false; };
-  };
+	virtual bool queryUsingDIO3AsTCXOSwitch(void) override { return false; };
+	};
 
-  static HalConfiguration_ChallengerZP_RP2350_LoRa_t myConfig;
+static HalConfiguration_ChallengerZP_RP2350_LoRa_t myConfig;
 
-  // Pins are mapped in enum from the definition in the Arduino variant files
-  static const HalPinmap_t myPinmap = {
-      .nss = HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS,
-      .rxtx = LMIC_UNUSED_PIN,
-      .rst = HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NRESET,
-      .dio = {
-        HalPinmap_t::UNUSED_PIN,  // DIO0 (not used by SX1262)
-        HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_DIO1,  // DIO1 (RX/TX interrupt)
-        HalPinmap_t::UNUSED_PIN   // DIO2
-      },
-      .rxtx_rx_active = 0,
-      .rssi_cal = 8,              // LBT cal for the ChallengerZP RP2350 LoRa
-      .spi_freq = 10000000,
-      .pConfig = &myConfig,
-      .spi = &SPI1
-  };
+// Pins are mapped in enum from the definition in the Arduino variant files
+static const HalPinmap_t myPinmap = 
+	{
+	.nss = HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NSS,
+	.rxtx = LMIC_UNUSED_PIN,
+	.rst = HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_NRESET,
+	.dio = {
+	HalPinmap_t::UNUSED_PIN,  // DIO0 (not used by SX1262)
+	HalConfiguration_ChallengerZP_RP2350_LoRa_t::SX1262_DIO1,  // DIO1 (RX/TX interrupt)
+	HalPinmap_t::UNUSED_PIN   // DIO2
+	},
+	.rxtx_rx_active = 0,
+	.rssi_cal = 8,              // LBT cal for the ChallengerZP RP2350 LoRa
+	.spi_freq = 10000000,
+	.pConfig = &myConfig,
+	.spi = &SPI1
+  	};
 
-  const HalPinmap_t *GetPinmap_ChallengerZP_RP2350_LoRa(void) {
-  	return &myPinmap;
-  }
+const HalPinmap_t *GetPinmap_ChallengerZP_RP2350_LoRa(void) 
+	{
+	return &myPinmap;
+	}
 }; // namespace Arduino_LMIC
 
 #endif  // defined(ARDUINO_CHALLENGERZP_2350_LORA_RP2350)

@@ -24,9 +24,11 @@ Author:
 #include "../hal/hal.h"
 
 namespace Arduino_LMIC {
-  class HalConfiguration_Connectivity_840_t : public HalConfiguration_t {
-    public:
-    	virtual void begin(void) override {
+class HalConfiguration_Connectivity_840_t : public HalConfiguration_t 
+	{
+public:
+	virtual void begin(void) override 
+	{
     		pinMode(PIN_SPI1_CS, OUTPUT);
     		digitalWrite(PIN_SPI1_CS, 1);
     	}
@@ -34,26 +36,28 @@ namespace Arduino_LMIC {
     	// virtual void end(void) override
 
     	// virtual ostime_t setModuleActive(bool state) override
-  };
+};
 
-  static HalConfiguration_Connectivity_840_t myConfig;
+static HalConfiguration_Connectivity_840_t myConfig;
 
-  // Pins are defined in the Arduino variant files
-  static const HalPinmap_t myPinmap = {
-      .nss = PIN_SPI1_CS,
-      .rxtx = LMIC_UNUSED_PIN,
-      .rst = PIN_LORA_RST,
-      .dio = {PIN_LORA_DIO0, PIN_LORA_DIO1, PIN_LORA_DIO2},
-      .rxtx_rx_active = 0,
-      .rssi_cal = 8,
-      .spi_freq = 8000000,
-      .pConfig = &myConfig,
-      .spi = &LORA_SPI
-  };
+// Pins are defined in the Arduino variant files
+static const HalPinmap_t myPinmap = 
+	{	
+	.nss = PIN_SPI1_CS,
+	.rxtx = LMIC_UNUSED_PIN,
+	.rst = PIN_LORA_RST,
+	.dio = {PIN_LORA_DIO0, PIN_LORA_DIO1, PIN_LORA_DIO2},
+	.rxtx_rx_active = 0,
+	.rssi_cal = 8,
+	.spi_freq = 8000000,
+	.pConfig = &myConfig,
+	.spi = &LORA_SPI
+	};
 
-  const HalPinmap_t *GetPinmap_Connectivity_840(void) {
-  	return &myPinmap;
-  }
+const HalPinmap_t *GetPinmap_Connectivity_840(void) 
+	{
+	return &myPinmap;
+	}
 }; // namespace Arduino_LMIC
 
 #endif  // defined(ARDUINO_CONNECTIVITY_840)
