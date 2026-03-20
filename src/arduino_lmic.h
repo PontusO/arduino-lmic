@@ -27,6 +27,8 @@ extern "C"{
 #include "lmic/lmic_bandplan.h"
 #include "lmic/lmic_util.h"
 
+#include "se/drivers/stsafe_a120_driver/stsafe_a120_proto.h"
+
 #ifdef __cplusplus
 }
 #endif

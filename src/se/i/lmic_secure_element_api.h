@@ -39,7 +39,7 @@ Author:
 ///
 /// \hideinitializer
 ///
-# define LMIC_CFG_SecureElement_DRIVER   Default
+# define LMIC_CFG_SecureElement_DRIVER   StsafeA120
 
 /// \brief Select linkage style
 ///
