@@ -29,8 +29,6 @@ static lmic_hal_failure_handler_t* custom_hal_failure_handler = NULL;
 
 static void lmic_hal_interrupt_init(); // Fwd declaration
 
-static void hal_interrupt_init(); // Fwd declaration
-
 static void lmic_hal_io_init () {
     // NSS is always required
     // SX1276/SX1272 need DIO0, SX126x only needs one of DIO1-DIO3
@@ -44,6 +42,12 @@ static void lmic_hal_io_init () {
     // pinmap, so accept any populated DIO entry.
     ASSERT(plmic_pins->dio[0] != LMIC_UNUSED_PIN || plmic_pins->dio[1] != LMIC_UNUSED_PIN || plmic_pins->dio[2] != LMIC_UNUSED_PIN);
 #endif
+
+//    Serial.print("nss: "); Serial.println(plmic_pins->nss);
+//    Serial.print("rst: "); Serial.println(plmic_pins->rst);
+//    Serial.print("dio[0]: "); Serial.println(plmic_pins->dio[0]);
+//    Serial.print("dio[1]: "); Serial.println(plmic_pins->dio[1]);
+//    Serial.print("dio[2]: "); Serial.println(plmic_pins->dio[2]);
 
     // initialize SPI chip select to high (it's active low)
     digitalWrite(plmic_pins->nss, HIGH);

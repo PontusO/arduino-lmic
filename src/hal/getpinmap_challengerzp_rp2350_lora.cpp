@@ -67,10 +67,10 @@ namespace Arduino_LMIC {
         HalPinmap_t::UNUSED_PIN   // DIO2
       },
       .rxtx_rx_active = 0,
-      .rssi_cal = 8,              // LBT cal for the Challenger RP2040 LoRa
-      .spi = &SPI1,
+      .rssi_cal = 8,              // LBT cal for the ChallengerZP RP2350 LoRa
       .spi_freq = 10000000,
-      .pConfig = &myConfig
+      .pConfig = &myConfig,
+      .spi = &SPI1
   };
 
   const HalPinmap_t *GetPinmap_ChallengerZP_RP2350_LoRa(void) {

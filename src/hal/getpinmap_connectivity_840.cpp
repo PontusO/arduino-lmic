@@ -46,9 +46,9 @@ namespace Arduino_LMIC {
       .dio = {PIN_LORA_DIO0, PIN_LORA_DIO1, PIN_LORA_DIO2},
       .rxtx_rx_active = 0,
       .rssi_cal = 8,
-      .spi = &LORA_SPI,
       .spi_freq = 8000000,
-      .pConfig = &myConfig
+      .pConfig = &myConfig,
+      .spi = &LORA_SPI
   };
 
   const HalPinmap_t *GetPinmap_Connectivity_840(void) {

@@ -61,10 +61,10 @@ struct HalPinmap_t {
 	int8_t rssi_cal;	// byte 7: cal in dB -- added to RSSI
 				//   measured prior to decision.
 				//   Must include noise guardband!
-	SPIClass *spi;   // SPI interface used
 	uint32_t spi_freq;	// bytes 8..11: SPI freq in Hz.
 	// optional pointer to configuration object (bytes 12..15)
 	HalConfiguration_t *pConfig;
+	SPIClass *spi;   // SPI interface used
 	};
 
 class HalConfiguration_t

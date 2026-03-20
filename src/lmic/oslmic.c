@@ -30,7 +30,7 @@
 
 #include "lmic.h"
 
-const struct lmic_pinmap  __attribute__((weak)) *lmic_pins = NULL;
+extern const struct lmic_pinmap lmic_pins;
 
 // RUNTIME STATE
 static struct {
@@ -48,9 +48,8 @@ int os_init_ex (const void *pintable) {
 }
 
 void os_init() {
-    if (lmic_pins)
-        if (os_init_ex((const void *)lmic_pins))
-            return;
+    if (os_init_ex((const void *)&lmic_pins))
+        return;
     ASSERT(0);
 }
 

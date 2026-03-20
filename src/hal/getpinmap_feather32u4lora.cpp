@@ -69,9 +69,9 @@ static const HalPinmap_t myPinmap =
                },
         .rxtx_rx_active = 0,
         .rssi_cal = 8,
-        .spi = &SPI,
         .spi_freq = 1000000,     /* 1MHz */
         .pConfig = &myConfig,
+        .spi = &SPI
         };
 
 const HalPinmap_t *GetPinmap_Feather32U4LoRa(void)

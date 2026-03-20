@@ -52,9 +52,9 @@ namespace Arduino_LMIC {
                 },
             .rxtx_rx_active = 1,
             .rssi_cal = 10,
-            .spi = &SPI,
             .spi_freq = 8000000,     /* 8MHz */
-            .pConfig = &myConfig
+            .pConfig = &myConfig,
+            .spi = &SPI
             };
 
     const HalPinmap_t *GetPinmap_Disco_L072cz_Lrwan1(void)

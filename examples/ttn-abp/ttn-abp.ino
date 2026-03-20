@@ -37,7 +37,6 @@
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
-#include "ttn-secrets.h"
 
 //
 // For normal use, we require that you edit the sketch to replace FILLMEIN
@@ -209,25 +208,8 @@ void setup() {
     delay(1000);
     #endif
 
-    // initialize runtime env
-    // don't die mysteriously; die noisily.
-    const lmic_pinmap *pPinMap = Arduino_LMIC::GetPinmap_ThisBoard();
-
-    if (pPinMap == nullptr) {
-      pinMode(LED_BUILTIN, OUTPUT);
-      for (;;) {
-        // flash lights, sleep.
-        for (int i = 0; i < 5; ++i) {
-          digitalWrite(LED_BUILTIN, 1);
-          delay(100);
-          digitalWrite(LED_BUILTIN, 0);
-          delay(900);
-        }
-        Serial.println(F("board not known to library; add pinmap or update getconfig_thisboard.cpp"));
-      }
-    }
-
-    os_init_ex(pPinMap);
+    // LMIC init
+    os_init();
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
 

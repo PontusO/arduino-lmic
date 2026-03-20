@@ -46,9 +46,9 @@ namespace Arduino_LMIC {
       .dio = {RFM95W_DIO0, RFM95W_DIO1, RFM95W_DIO2},
       .rxtx_rx_active = 0,
       .rssi_cal = 8,              // LBT cal for the Challenger RP2040 LoRa
-      .spi = &SPI1,
       .spi_freq = 10000000,
-      .pConfig = &myConfig
+      .pConfig = &myConfig,
+      .spi = &SPI1
   };
 
   const HalPinmap_t *GetPinmap_Challenger_RP2040_LoRa(void) {

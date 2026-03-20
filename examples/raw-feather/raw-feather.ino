@@ -272,23 +272,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   // initialize runtime env
-  // don't die mysteriously; die noisily.
-  const lmic_pinmap *pPinMap = Arduino_LMIC::GetPinmap_ThisBoard();
-
-  if (pPinMap == nullptr) {
-    pinMode(LED_BUILTIN, OUTPUT);
-    for (;;) {
-      // flash lights, sleep.
-      for (int i = 0; i < 5; ++i) {
-        digitalWrite(LED_BUILTIN, 1);
-        delay(100);
-        digitalWrite(LED_BUILTIN, 0);
-        delay(900);
-      }
-      Serial.println(F("board not known to library; add pinmap or update getconfig_thisboard.cpp"));
-    }
-  }
-  os_init_ex(pPinMap);
+  os_init();
 
   // Set up these settings once, and use them for both TX and RX
 #ifdef ARDUINO_ARCH_STM32

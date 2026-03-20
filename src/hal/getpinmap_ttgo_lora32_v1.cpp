@@ -68,9 +68,9 @@ static const HalPinmap_t myPinmap =
                },
         .rxtx_rx_active = 0,
         .rssi_cal = 10,
-        .spi = &SPI,
         .spi_freq = 8000000,     /* 8MHz */
-        .pConfig = &myConfig
+        .pConfig = &myConfig,
+        .spi = &SPI
         };
 
 const HalPinmap_t * GetPinmap_ttgo_lora32_v1 (void)

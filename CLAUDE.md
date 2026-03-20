@@ -51,6 +51,19 @@ Key suppression/redirection macros: `ARDUINO_LMIC_PROJECT_CONFIG_H_SUPPRESS`, `A
 
 **Doxygen:** `Doxyfile` at repo root for API documentation generation.
 
+## Workflow
+
+All changes go through pull requests, never direct pushes to master. This applies even for small fixes -- it sets a good example for contributors.
+
+```
+git checkout -b issueNNNN master
+# ... make changes, commit ...
+git push -u origin issueNNNN
+gh pr create --title "Short description (fixes #NNNN)" --body "..."
+# wait for CI
+gh pr merge PRNUM --merge --delete-branch
+```
+
 ## Code Conventions
 
 - Tab size: 8, tabs not spaces (see `.vscode/settings.json`)

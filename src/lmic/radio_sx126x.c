@@ -638,7 +638,7 @@ static void setPacketParams(u1_t packetType, u1_t frameLength, u1_t invertIQ) {
         u1_t packetParams[SX126X_LORA_PACKETPARAMS_LEN] = {0};
 
         // LoRa PacketParam1 (MSB) & 2 (LSB) - PreambleLength
-        // Use 8 symbols for LoRaWAN compatibility (matches SX1276 default)
+        // The existing radio.c appears to use a default 8 bit preamble
         packetParams[0] = 0x00;
         packetParams[1] = 0x08;
 
