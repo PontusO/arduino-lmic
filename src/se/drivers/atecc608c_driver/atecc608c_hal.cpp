@@ -1,9 +1,9 @@
-#include "stsafe_a120_hal.h"
+#include "atecc608c_hal.h"
 
-static constexpr uint32_t STSAFE_RESET_READY_DELAY_MS = 20;   // datasheet max tI2C_READY
-static constexpr uint32_t STSAFE_STANDBY_WAKE_US      = 100;  // >60 us, rounded safely
+static constexpr uint32_t ATECC608C_RESET_READY_DELAY_MS = 20;   // datasheet max tI2C_READY
+static constexpr uint32_t ATECC608C_STANDBY_WAKE_US      = 100;  // >60 us, rounded safely
 
-bool stsafe_a120_hal_init(stsafe_a120_hal_t *hal,
+bool atecc608c_hal_init(atecc608c_hal_t *hal,
                           TwoWire *wire,
                           uint8_t i2c_addr_7bit,
                           int8_t reset_pin,
@@ -26,13 +26,13 @@ bool stsafe_a120_hal_init(stsafe_a120_hal_t *hal,
         digitalWrite(reset_pin, LOW);
         delay(1);
         digitalWrite(reset_pin, HIGH);
-        delay(STSAFE_RESET_READY_DELAY_MS);
+        delay(ATECC608C_RESET_READY_DELAY_MS);
     }
 
     return true;
 }
 
-void stsafe_a120_hal_reset_assert(const stsafe_a120_hal_t *hal)
+void atecc608c_hal_reset_assert(const atecc608c_hal_t *hal)
 {
     if (!hal || hal->reset_pin < 0) {
         return;
@@ -40,7 +40,7 @@ void stsafe_a120_hal_reset_assert(const stsafe_a120_hal_t *hal)
     digitalWrite(hal->reset_pin, LOW);
 }
 
-void stsafe_a120_hal_reset_release(const stsafe_a120_hal_t *hal)
+void atecc608c_hal_reset_release(const atecc608c_hal_t *hal)
 {
     if (!hal || hal->reset_pin < 0) {
         return;
@@ -48,21 +48,21 @@ void stsafe_a120_hal_reset_release(const stsafe_a120_hal_t *hal)
     digitalWrite(hal->reset_pin, HIGH);
 }
 
-bool stsafe_a120_hal_reset_pulse(const stsafe_a120_hal_t *hal)
+bool atecc608c_hal_reset_pulse(const atecc608c_hal_t *hal)
 {
     if (!hal || hal->reset_pin < 0) {
         return false;
     }
 
-    stsafe_a120_hal_reset_assert(hal);
+    atecc608c_hal_reset_assert(hal);
     delay(1);  // comfortably above 5 us minimum pulse width
-    stsafe_a120_hal_reset_release(hal);
-    delay(STSAFE_RESET_READY_DELAY_MS);
+    atecc608c_hal_reset_release(hal);
+    delay(ATECC608C_RESET_READY_DELAY_MS);
 
-    return stsafe_a120_hal_wait_ready(hal, 50);
+    return atecc608c_hal_wait_ready(hal, 50);
 }
 
-bool stsafe_a120_hal_probe(const stsafe_a120_hal_t *hal)
+bool atecc608c_hal_probe(const atecc608c_hal_t *hal)
 {
     if (!hal || !hal->wire) {
         return false;
@@ -73,7 +73,7 @@ bool stsafe_a120_hal_probe(const stsafe_a120_hal_t *hal)
     return (err == 0);
 }
 
-bool stsafe_a120_hal_wait_ready(const stsafe_a120_hal_t *hal, uint32_t timeout_ms)
+bool atecc608c_hal_wait_ready(const atecc608c_hal_t *hal, uint32_t timeout_ms)
 {
     if (!hal) {
         return false;
@@ -82,17 +82,17 @@ bool stsafe_a120_hal_wait_ready(const stsafe_a120_hal_t *hal, uint32_t timeout_m
     const uint32_t t0 = millis();
 
     while ((millis() - t0) < timeout_ms) {
-        if (stsafe_a120_hal_probe(hal)) {
+        if (atecc608c_hal_probe(hal)) {
             return true;
         }
-        delayMicroseconds(STSAFE_STANDBY_WAKE_US);
+        delayMicroseconds(ATECC608C_STANDBY_WAKE_US);
         delay(1);
     }
 
     return false;
 }
 
-bool stsafe_a120_hal_write(const stsafe_a120_hal_t *hal,
+bool atecc608c_hal_write(const atecc608c_hal_t *hal,
                            const uint8_t *data,
                            size_t len)
 {
@@ -107,7 +107,7 @@ bool stsafe_a120_hal_write(const stsafe_a120_hal_t *hal,
     return (written == len) && (err == 0);
 }
 
-bool stsafe_a120_hal_read(const stsafe_a120_hal_t *hal,
+bool atecc608c_hal_read(const atecc608c_hal_t *hal,
                           uint8_t *data,
                           size_t len)
 {
@@ -133,26 +133,26 @@ bool stsafe_a120_hal_read(const stsafe_a120_hal_t *hal,
     return true;
 }
 
-bool stsafe_a120_hal_write_read(const stsafe_a120_hal_t *hal,
+bool atecc608c_hal_write_read(const atecc608c_hal_t *hal,
                                 const uint8_t *tx,
                                 size_t tx_len,
                                 uint8_t *rx,
                                 size_t rx_len)
 {
-    if (!stsafe_a120_hal_write(hal, tx, tx_len)) {
+    if (!atecc608c_hal_write(hal, tx, tx_len)) {
         return false;
     }
 
-    delayMicroseconds(STSAFE_STANDBY_WAKE_US);
+    delayMicroseconds(ATECC608C_STANDBY_WAKE_US);
 
     if (rx_len == 0) {
         return true;
     }
 
-    return stsafe_a120_hal_read(hal, rx, rx_len);
+    return atecc608c_hal_read(hal, rx, rx_len);
 }
 
-void stsafe_a120_hal_scan(const stsafe_a120_hal_t *hal, Stream &out)
+void atecc608c_hal_scan(const atecc608c_hal_t *hal, Stream &out)
 {
     if (!hal || !hal->wire) {
         out.println("HAL not initialized");

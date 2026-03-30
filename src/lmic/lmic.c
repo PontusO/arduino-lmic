@@ -282,7 +282,7 @@ static void rxschedInit (xref2rxsched_t rxsched) {
         LMICOS_logEventUint32("rxschedInit: enrypt failed", seErr);
     }
     u1_t intvExp = rxsched->intvExp;
-    ostime_t off = os_rlsbf2(LMIC.frame) & (0x0FFF >> (7 - intvExp)); // random offset (slot units)
+    ostime_t off = os_rlsbf2(frame) & (0x0FFF >> (7 - intvExp)); // random offset (slot units)
     rxsched->rxbase = (LMIC.bcninfo.txtime +
                        BCN_RESERVE_osticks +
                        ms2osticks(BCN_SLOT_SPAN_ms * off)); // random offset osticks
@@ -3065,10 +3065,18 @@ void LMIC_tryRejoin (void) {
 void LMIC_setSession (u4_t netid, devaddr_t devaddr, xref2u1_t nwkKey, xref2u1_t artKey) {
     LMIC.netid = netid;
     LMIC.devaddr = devaddr;
-    if( nwkKey != (xref2u1_t)0 )
+    if( nwkKey != (xref2u1_t)0 ) {
         os_copyMem(LMIC.nwkKey, nwkKey, 16);
-    if( artKey != (xref2u1_t)0 )
+        LMIC_SecureElement_Aes128Key_t seKey;
+        os_copyMem(seKey.bytes, nwkKey, 16);
+        LMIC_SecureElement_setNwkSKey(&seKey, LMIC_SecureElement_KeySelector_Unicast);
+    }
+    if( artKey != (xref2u1_t)0 ) {
         os_copyMem(LMIC.artKey, artKey, 16);
+        LMIC_SecureElement_Aes128Key_t seKey;
+        os_copyMem(seKey.bytes, artKey, 16);
+        LMIC_SecureElement_setAppSKey(&seKey, LMIC_SecureElement_KeySelector_Unicast);
+    }
 
     LMICbandplan_setSessionInitDefaultChannels();
 
@@ -3122,6 +3130,23 @@ u4_t LMIC_getSeqnoUp(void) {
 u4_t LMIC_setSeqnoUp(u4_t seq_no) {
     u4_t last = LMIC.seqnoUp;
     LMIC.seqnoUp = seq_no;
+    return last;
+}
+
+// \brief return the downlink sequence number (next expected FCntDown).
+// For ABP sessions, callers should persist this value and restore it via
+// LMIC_setSeqnoDn() on startup to maintain replay protection across resets.
+u4_t LMIC_getSeqnoDn(void) {
+    return LMIC.seqnoDn;
+}
+
+// \brief set the downlink sequence number (next expected FCntDown).
+// For ABP, call this after LMIC_setSession() to restore the persisted
+// downlink frame counter, preventing replay of old downlink frames.
+// Returns the previous value.
+u4_t LMIC_setSeqnoDn(u4_t seq_no) {
+    u4_t last = LMIC.seqnoDn;
+    LMIC.seqnoDn = seq_no;
     return last;
 }
 

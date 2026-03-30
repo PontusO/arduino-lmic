@@ -998,6 +998,8 @@ void LMIC_setClockError(u2_t error);
 
 u4_t LMIC_getSeqnoUp    (void);
 u4_t LMIC_setSeqnoUp    (u4_t);
+u4_t LMIC_getSeqnoDn    (void);
+u4_t LMIC_setSeqnoDn    (u4_t);
 void LMIC_getSessionKeys (u4_t *netid, devaddr_t *devaddr, xref2u1_t nwkKey, xref2u1_t artKey);
 
 void LMIC_requestNetworkTime(lmic_request_network_time_cb_t *pCallbackfn, void *pUserData);

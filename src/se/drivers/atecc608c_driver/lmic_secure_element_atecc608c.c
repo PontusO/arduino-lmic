@@ -1,25 +1,25 @@
-#include "lmic_secure_element_stsafe_a120.h"
-#include "stsafe_a120_backend.h"
+#include "lmic_secure_element_atecc608c.h"
+#include "atecc608c_backend.h"
 
 #include <string.h>
 
-static stsafe_a120_backend_ctx_t g_stsafe_a120;
+static atecc608c_backend_ctx_t g_atecc608c;
 
-static LMIC_SecureElement_Error_t map_backend_status(stsafe_a120_backend_status_t st)
+static LMIC_SecureElement_Error_t map_backend_status(atecc608c_backend_status_t st)
 {
     switch (st) {
-    case STSAFE_A120_BACKEND_STATUS_OK:
+    case ATECC608C_BACKEND_STATUS_OK:
         return LMIC_SecureElement_Error_OK;
-    case STSAFE_A120_BACKEND_STATUS_INVALID_PARAM:
+    case ATECC608C_BACKEND_STATUS_INVALID_PARAM:
         return LMIC_SecureElement_Error_InvalidParameter;
-    case STSAFE_A120_BACKEND_STATUS_NOT_PROVISIONED:
+    case ATECC608C_BACKEND_STATUS_NOT_PROVISIONED:
         return LMIC_SecureElement_Error_NotProvisioned;
-    case STSAFE_A120_BACKEND_STATUS_PERMISSION:
+    case ATECC608C_BACKEND_STATUS_PERMISSION:
         return LMIC_SecureElement_Error_Permission;
-    case STSAFE_A120_BACKEND_STATUS_UNSUPPORTED:
-    case STSAFE_A120_BACKEND_STATUS_NOT_INITIALIZED:
-    case STSAFE_A120_BACKEND_STATUS_IO_ERROR:
-    case STSAFE_A120_BACKEND_STATUS_CRYPTO_ERROR:
+    case ATECC608C_BACKEND_STATUS_UNSUPPORTED:
+    case ATECC608C_BACKEND_STATUS_NOT_INITIALIZED:
+    case ATECC608C_BACKEND_STATUS_IO_ERROR:
+    case ATECC608C_BACKEND_STATUS_CRYPTO_ERROR:
     default:
         return LMIC_SecureElement_Error_Implementation;
     }
@@ -31,113 +31,113 @@ static int valid_key_selector(LMIC_SecureElement_KeySelector_t iKey)
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_initialize(void)
+LMIC_SecureElement_Atecc608c_initialize(void)
 {
-    return map_backend_status(stsafe_a120_backend_init(&g_stsafe_a120));
+    return map_backend_status(atecc608c_backend_init(&g_atecc608c));
 }
 
 uint8_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getRandomU1(void)
+LMIC_SecureElement_Atecc608c_getRandomU1(void)
 {
     uint8_t v = 0;
-    (void)stsafe_a120_backend_random(&g_stsafe_a120, &v, 1);
+    (void)atecc608c_backend_random(&g_atecc608c, &v, 1);
     return v;
 }
 
 uint16_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getRandomU2(void)
+LMIC_SecureElement_Atecc608c_getRandomU2(void)
 {
     uint8_t b[2] = {0, 0};
-    (void)stsafe_a120_backend_random(&g_stsafe_a120, b, 2);
+    (void)atecc608c_backend_random(&g_atecc608c, b, 2);
     return (uint16_t)b[0] | ((uint16_t)b[1] << 8);
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_fillRandomBuffer(uint8_t *buffer, uint8_t nBuffer)
+LMIC_SecureElement_Atecc608c_fillRandomBuffer(uint8_t *buffer, uint8_t nBuffer)
 {
     if (buffer == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_random(&g_stsafe_a120, buffer, nBuffer)
+        atecc608c_backend_random(&g_atecc608c, buffer, nBuffer)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_setAppKey(const LMIC_SecureElement_Aes128Key_t *pAppKey)
+LMIC_SecureElement_Atecc608c_setAppKey(const LMIC_SecureElement_Aes128Key_t *pAppKey)
 {
     if (pAppKey == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_set_appkey(&g_stsafe_a120, pAppKey->bytes)
+        atecc608c_backend_set_appkey(&g_atecc608c, pAppKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getAppKey(LMIC_SecureElement_Aes128Key_t *pAppKey)
+LMIC_SecureElement_Atecc608c_getAppKey(LMIC_SecureElement_Aes128Key_t *pAppKey)
 {
     if (pAppKey == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_get_appkey(&g_stsafe_a120, pAppKey->bytes)
+        atecc608c_backend_get_appkey(&g_atecc608c, pAppKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_setAppEUI(const LMIC_SecureElement_EUI_t *pAppEUI)
+LMIC_SecureElement_Atecc608c_setAppEUI(const LMIC_SecureElement_EUI_t *pAppEUI)
 {
     if (pAppEUI == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_set_appeui(&g_stsafe_a120, pAppEUI->bytes)
+        atecc608c_backend_set_appeui(&g_atecc608c, pAppEUI->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getAppEUI(LMIC_SecureElement_EUI_t *pAppEUI)
+LMIC_SecureElement_Atecc608c_getAppEUI(LMIC_SecureElement_EUI_t *pAppEUI)
 {
     if (pAppEUI == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_get_appeui(&g_stsafe_a120, pAppEUI->bytes)
+        atecc608c_backend_get_appeui(&g_atecc608c, pAppEUI->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_setDevEUI(const LMIC_SecureElement_EUI_t *pDevEUI)
+LMIC_SecureElement_Atecc608c_setDevEUI(const LMIC_SecureElement_EUI_t *pDevEUI)
 {
     if (pDevEUI == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_set_deveui(&g_stsafe_a120, pDevEUI->bytes)
+        atecc608c_backend_set_deveui(&g_atecc608c, pDevEUI->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getDevEUI(LMIC_SecureElement_EUI_t *pDevEUI)
+LMIC_SecureElement_Atecc608c_getDevEUI(LMIC_SecureElement_EUI_t *pDevEUI)
 {
     if (pDevEUI == NULL) {
         return LMIC_SecureElement_Error_InvalidParameter;
     }
 
     return map_backend_status(
-        stsafe_a120_backend_get_deveui(&g_stsafe_a120, pDevEUI->bytes)
+        atecc608c_backend_get_deveui(&g_atecc608c, pDevEUI->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_setNwkSKey(
+LMIC_SecureElement_Atecc608c_setNwkSKey(
     const LMIC_SecureElement_Aes128Key_t *pNwkSKey,
     LMIC_SecureElement_KeySelector_t iKey)
 {
@@ -146,12 +146,12 @@ LMIC_SecureElement_StsafeA120_setNwkSKey(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_set_nwkskey(&g_stsafe_a120, iKey, pNwkSKey->bytes)
+        atecc608c_backend_set_nwkskey(&g_atecc608c, iKey, pNwkSKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getNwkSKey(
+LMIC_SecureElement_Atecc608c_getNwkSKey(
     LMIC_SecureElement_Aes128Key_t *pNwkSKey,
     LMIC_SecureElement_KeySelector_t iKey)
 {
@@ -160,12 +160,12 @@ LMIC_SecureElement_StsafeA120_getNwkSKey(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_get_nwkskey(&g_stsafe_a120, iKey, pNwkSKey->bytes)
+        atecc608c_backend_get_nwkskey(&g_atecc608c, iKey, pNwkSKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_setAppSKey(
+LMIC_SecureElement_Atecc608c_setAppSKey(
     const LMIC_SecureElement_Aes128Key_t *pAppSKey,
     LMIC_SecureElement_KeySelector_t iKey)
 {
@@ -174,12 +174,12 @@ LMIC_SecureElement_StsafeA120_setAppSKey(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_set_appskey(&g_stsafe_a120, iKey, pAppSKey->bytes)
+        atecc608c_backend_set_appskey(&g_atecc608c, iKey, pAppSKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_getAppSKey(
+LMIC_SecureElement_Atecc608c_getAppSKey(
     LMIC_SecureElement_Aes128Key_t *pAppSKey,
     LMIC_SecureElement_KeySelector_t iKey)
 {
@@ -188,12 +188,12 @@ LMIC_SecureElement_StsafeA120_getAppSKey(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_get_appskey(&g_stsafe_a120, iKey, pAppSKey->bytes)
+        atecc608c_backend_get_appskey(&g_atecc608c, iKey, pAppSKey->bytes)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_createJoinRequest(
+LMIC_SecureElement_Atecc608c_createJoinRequest(
     uint8_t *pJoinRequestBytes,
     LMIC_SecureElement_JoinFormat_t joinFormat)
 {
@@ -202,12 +202,12 @@ LMIC_SecureElement_StsafeA120_createJoinRequest(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_create_join_request(&g_stsafe_a120, pJoinRequestBytes, joinFormat)
+        atecc608c_backend_create_join_request(&g_atecc608c, pJoinRequestBytes, joinFormat)
     );
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_decodeJoinAccept(
+LMIC_SecureElement_Atecc608c_decodeJoinAccept(
     const uint8_t *pJoinAcceptBytes,
     uint8_t nJoinAcceptBytes,
     uint8_t *pJoinAcceptClearText,
@@ -218,8 +218,8 @@ LMIC_SecureElement_StsafeA120_decodeJoinAccept(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_decode_join_accept(
-            &g_stsafe_a120,
+        atecc608c_backend_decode_join_accept(
+            &g_atecc608c,
             pJoinAcceptBytes,
             nJoinAcceptBytes,
             pJoinAcceptClearText,
@@ -228,7 +228,7 @@ LMIC_SecureElement_StsafeA120_decodeJoinAccept(
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_encodeMessage(
+LMIC_SecureElement_Atecc608c_encodeMessage(
     const uint8_t *pMessage,
     uint8_t nMessage,
     uint8_t iPayload,
@@ -240,8 +240,8 @@ LMIC_SecureElement_StsafeA120_encodeMessage(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_encode_message(
-            &g_stsafe_a120,
+        atecc608c_backend_encode_message(
+            &g_atecc608c,
             pMessage,
             nMessage,
             iPayload,
@@ -251,7 +251,7 @@ LMIC_SecureElement_StsafeA120_encodeMessage(
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_verifyMIC(
+LMIC_SecureElement_Atecc608c_verifyMIC(
     const uint8_t *pPhyPayload,
     uint8_t nPhyPayload,
     uint32_t devAddr,
@@ -263,8 +263,8 @@ LMIC_SecureElement_StsafeA120_verifyMIC(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_verify_mic(
-            &g_stsafe_a120,
+        atecc608c_backend_verify_mic(
+            &g_atecc608c,
             pPhyPayload,
             nPhyPayload,
             devAddr,
@@ -274,7 +274,7 @@ LMIC_SecureElement_StsafeA120_verifyMIC(
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_decodeMessage(
+LMIC_SecureElement_Atecc608c_decodeMessage(
     const uint8_t *pPhyPayload,
     uint8_t nPhyPayload,
     uint32_t devAddr,
@@ -287,8 +287,8 @@ LMIC_SecureElement_StsafeA120_decodeMessage(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_decode_message(
-            &g_stsafe_a120,
+        atecc608c_backend_decode_message(
+            &g_atecc608c,
             pPhyPayload,
             nPhyPayload,
             devAddr,
@@ -299,7 +299,7 @@ LMIC_SecureElement_StsafeA120_decodeMessage(
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
-LMIC_SecureElement_StsafeA120_aes128Encrypt(
+LMIC_SecureElement_Atecc608c_aes128Encrypt(
     const uint8_t *pKey,
     const uint8_t *pInput,
     uint8_t *pOutput)
@@ -309,6 +309,6 @@ LMIC_SecureElement_StsafeA120_aes128Encrypt(
     }
 
     return map_backend_status(
-        stsafe_a120_backend_aes128_encrypt(&g_stsafe_a120, pKey, pInput, pOutput)
+        atecc608c_backend_aes128_encrypt(&g_atecc608c, pKey, pInput, pOutput)
     );
 }
