@@ -1,3 +1,16 @@
+/*******************************************************************************
+ * Copyright (c) 2026 Ilabs AB
+ *
+ * Permission is hereby granted, free of charge, to anyone
+ * obtaining a copy of this document and accompanying files,
+ * to do whatever they want with them without any restriction,
+ * including, but not limited to, copying, modification and redistribution.
+ * NO WARRANTY OF ANY KIND IS PROVIDED.
+ *
+ * ATECC608C LMIC secure element driver (implementation).
+ *
+ *******************************************************************************/
+
 #include "lmic_secure_element_atecc608c.h"
 #include "atecc608c_backend.h"
 
@@ -16,10 +29,11 @@ static LMIC_SecureElement_Error_t map_backend_status(atecc608c_backend_status_t 
         return LMIC_SecureElement_Error_NotProvisioned;
     case ATECC608C_BACKEND_STATUS_PERMISSION:
         return LMIC_SecureElement_Error_Permission;
+    case ATECC608C_BACKEND_STATUS_CRYPTO_ERROR:
+        return LMIC_SecureElement_Error_InvalidMIC;
     case ATECC608C_BACKEND_STATUS_UNSUPPORTED:
     case ATECC608C_BACKEND_STATUS_NOT_INITIALIZED:
     case ATECC608C_BACKEND_STATUS_IO_ERROR:
-    case ATECC608C_BACKEND_STATUS_CRYPTO_ERROR:
     default:
         return LMIC_SecureElement_Error_Implementation;
     }
@@ -296,6 +310,15 @@ LMIC_SecureElement_Atecc608c_decodeMessage(
             iKey,
             pClearTextBuffer)
     );
+}
+
+LMIC_SecureElement_Error_t LMIC_ABI_STD
+LMIC_SecureElement_Atecc608c_configure(
+	bool (*hw_random_fn)(uint8_t *out, uint8_t len, void *ctx),
+	void *hw_ctx)
+{
+	atecc608c_backend_set_hw_random(&g_atecc608c, hw_random_fn, hw_ctx);
+	return LMIC_SecureElement_Error_OK;
 }
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD

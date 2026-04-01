@@ -1,8 +1,29 @@
+/*******************************************************************************
+ * Copyright (c) 2026 Ilabs AB
+ *
+ * Permission is hereby granted, free of charge, to anyone
+ * obtaining a copy of this document and accompanying files,
+ * to do whatever they want with them without any restriction,
+ * including, but not limited to, copying, modification and redistribution.
+ * NO WARRANTY OF ANY KIND IS PROVIDED.
+ *
+ * ATECC608C crypto backend -- LoRaWAN key storage and cryptographic operations.
+ *
+ * Implements the SE backend API (join request/accept, MIC, AES-CTR, session
+ * key derivation) using LMIC's built-in AES engine.  The ATECC608C chip is
+ * used for hardware random number generation via a registered callback;
+ * a software xorshift32 fallback is used if no hardware RNG is registered.
+ *
+ *******************************************************************************/
+
 #ifndef _atecc608c_backend_h_
 #define _atecc608c_backend_h_
 
 #include <stdint.h>
 #include <stdbool.h>
+
+/* SE interface types: LMIC_SecureElement_JoinFormat_t, KeySelector_t, etc. */
+#include "../../i/lmic_secure_element_interface.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,10 +54,27 @@ typedef struct atecc608c_backend_ctx_s {
     uint8_t deveui[8];
     uint8_t nwkskey[5][16];
     uint8_t appskey[5][16];
+
+    /*
+     * Optional hardware RNG hook.  When set, backend_random() calls this
+     * instead of the built-in xorshift32 PRNG.  len is always in [1, 32].
+     * Returns true on success, false on I/O error.
+     */
+    bool (*hw_random)(uint8_t *out, uint8_t len, void *ctx);
+    void *hw_random_ctx;
 } atecc608c_backend_ctx_t;
 
 /* lifecycle */
 atecc608c_backend_status_t atecc608c_backend_init(atecc608c_backend_ctx_t *ctx);
+
+/*
+ * Register a hardware RNG function.  When set, atecc608c_backend_random() calls
+ * fn(out, len, user_ctx) to fill up to 32 bytes at a time.  Pass NULL to revert
+ * to the built-in software PRNG.
+ */
+void atecc608c_backend_set_hw_random(atecc608c_backend_ctx_t *ctx,
+                                      bool (*fn)(uint8_t *out, uint8_t len, void *user_ctx),
+                                      void *user_ctx);
 
 /* randomness */
 atecc608c_backend_status_t atecc608c_backend_random(atecc608c_backend_ctx_t *ctx, uint8_t *buf, uint8_t len);

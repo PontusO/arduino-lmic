@@ -1,3 +1,16 @@
+/*******************************************************************************
+ * Copyright (c) 2026 Ilabs AB
+ *
+ * Permission is hereby granted, free of charge, to anyone
+ * obtaining a copy of this document and accompanying files,
+ * to do whatever they want with them without any restriction,
+ * including, but not limited to, copying, modification and redistribution.
+ * NO WARRANTY OF ANY KIND IS PROVIDED.
+ *
+ * ATECC608C HAL -- Arduino/Wire I2C hardware abstraction layer (implementation).
+ *
+ *******************************************************************************/
+
 #include "atecc608c_hal.h"
 
 static constexpr uint32_t ATECC608C_RESET_READY_DELAY_MS = 20;   // datasheet max tI2C_READY
@@ -60,6 +73,26 @@ bool atecc608c_hal_reset_pulse(const atecc608c_hal_t *hal)
     delay(ATECC608C_RESET_READY_DELAY_MS);
 
     return atecc608c_hal_wait_ready(hal, 50);
+}
+
+void atecc608c_hal_send_wake_token(const atecc608c_hal_t *hal)
+{
+    if (!hal || !hal->wire) {
+        return;
+    }
+    /*
+     * The ATECC608C wake token is an I2C transaction to address 0x00.
+     * At 100 kHz each bit takes 10 us, so the 8-bit address byte holds
+     * SDA low for ~80 us, satisfying the tWLO > 60 us requirement.
+     * The transmission NAKs (no device at address 0x00); that is expected.
+     * After releasing SDA we wait tWHI >= 1.5 ms for the chip to wake.
+     *
+     * Note: at 400 kHz a bit is only 2.5 us so tWLO would not be met.
+     * If the bus runs at 400 kHz the caller must drop the clock first.
+     */
+    hal->wire->beginTransmission(0x00);
+    hal->wire->endTransmission(true);
+    delay(2); /* tWHI >= 1.5 ms */
 }
 
 bool atecc608c_hal_probe(const atecc608c_hal_t *hal)
