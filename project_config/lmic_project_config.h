@@ -11,3 +11,4 @@
 #define CFG_sx1262_radio 1
 //#define ARDUINO_heltec_wifi_lora_32_V3
 #define LMIC_USE_INTERRUPTS
+#define LMIC_CFG_SecureElement_DRIVER Atecc608c

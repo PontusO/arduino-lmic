@@ -29,34 +29,43 @@ LMIC_BEGIN_DECLS
 LMIC_SecureElement_DECLARE_DRIVER_FNS(Atecc608c);
 
 /*
- * Wire a hardware RNG into the ATECC608C secure element backend.
+ * Wire the ATECC608C hardware device and optional hardware RNG into the SE
+ * backend.  Call this once during setup, after atecc608c_init(), before
+ * LMIC_reset().
  *
- * Call this once during setup, after the hardware device has been initialised
- * with atecc608c_init(), to replace the built-in software PRNG with the chip's
- * true random number generator.
+ * chip_dev     Pointer to the initialised atecc608c_t device, passed as
+ *              void * to avoid Wire.h in C callers.  The backend uses this
+ *              to perform AppKey operations (join MIC, join accept decrypt,
+ *              session key derivation) via the chip's on-board AES engine.
+ *              The AppKey never touches host RAM.
  *
- * hw_random_fn -- function that fills out[0..len-1] with random bytes, where
- *                 len is always in [1, 32].  Returns true on success.
- * hw_ctx       -- opaque pointer passed to hw_random_fn (typically a pointer
- *                 to the atecc608c_t device handle).
+ * hw_random_fn Function that fills out[0..len-1] with up to 32 hardware
+ *              random bytes.  Pass NULL to use the built-in software PRNG.
  *
- * Passing NULL for hw_random_fn reverts to the built-in software PRNG.
+ * hw_ctx       Opaque pointer forwarded to hw_random_fn on each call
+ *              (typically the same atecc608c_t * cast to void *).
  *
  * Example sketch usage:
- *   static atecc608c_t g_hw_dev;
+ *   static atecc608c_t g_chip;
  *
- *   static bool my_hw_random(uint8_t *out, uint8_t len, void *ctx) {
- *       return atecc608c_random_bytes((atecc608c_t *)ctx, out, len);
+ *   static bool hw_rng(uint8_t *out, uint8_t len, void *ctx) {
+ *       atecc608c_t *dev = (atecc608c_t *)ctx;
+ *       uint8_t wr[4];
+ *       if (!atecc608c_wake(dev, wr)) return false;
+ *       bool ok = atecc608c_random_bytes(dev, out, len);
+ *       atecc608c_sleep(dev);
+ *       return ok;
  *   }
  *
  *   void setup() {
- *       atecc608c_init(&g_hw_dev, &Wire, 0x60, -1, 100000);
- *       LMIC_SecureElement_Atecc608c_configure(my_hw_random, &g_hw_dev);
+ *       atecc608c_init(&g_chip, &Wire, 0x60, -1, 100000UL);
+ *       LMIC_SecureElement_Atecc608c_configure(&g_chip, hw_rng, &g_chip);
  *       LMIC_reset();
  *   }
  */
 LMIC_SecureElement_Error_t LMIC_ABI_STD
 LMIC_SecureElement_Atecc608c_configure(
+	void *chip_dev,
 	bool (*hw_random_fn)(uint8_t *out, uint8_t len, void *ctx),
 	void *hw_ctx);
 

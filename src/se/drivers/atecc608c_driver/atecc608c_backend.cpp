@@ -9,23 +9,26 @@
  *
  * ATECC608C crypto backend (implementation).
  *
+ * AppKey crypto (join request MIC, join accept decrypt, session key derivation)
+ * is performed by the chip's on-board AES-128 engine via atecc608c_aes_ecb_encrypt()
+ * using the sealed key in slot 0.  The AppKey never touches host RAM.
+ *
+ * Session keys (NwkSKey, AppSKey) are derived into RAM after each OTAA join
+ * and used with LMIC's software AES for data frame crypto.
+ *
  *******************************************************************************/
 
 #include "atecc608c_backend.h"
+#include "atecc608c_proto.h"   /* atecc608c_t, atecc608c_aes_ecb_encrypt() */
 
 #include <string.h>
 
 /*
- * Pull in LMIC's AES engine (os_aes, AESkey, AESaux) and the LMIC global
- * struct (LMIC.devaddr, LMIC.seqnoUp, LMIC.devNonce), frame-format constants
- * (OFF_JR_*, OFF_JA_*, OFF_DAT_*, HDR_FTYPE_JREQ, LEN_ARTNONCE, LEN_NETID, …)
- * and helpers (os_copyMem, os_clearMem, os_wlsbf2/4, os_wmsbf4, os_rmsbf4).
- * This mirrors the approach used by lmic_se_default.c.
+ * Pull in LMIC's AES engine (os_aes, AESkey, AESaux) and helpers.
+ * Used for session-key crypto (NwkSKey / AppSKey operations on data frames).
  */
 #include "../../../aes/lmic_aes_api.h"
 #include "../../../lmic/lmic.h"
-
-#define ATECC608C_BACKEND_ALLOW_APPKEY_READBACK 0
 
 /* =========================================================================
  * Lifecycle
@@ -37,10 +40,25 @@ atecc608c_backend_status_t atecc608c_backend_init(atecc608c_backend_ctx_t *ctx)
 		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
 	}
 
+	/* Preserve hardware bindings set by configure() before LMIC_reset(). */
+	void *saved_chip        = ctx->chip;
+	void *saved_hw_ctx      = ctx->hw_random_ctx;
+	bool (*saved_hw_fn)(uint8_t *, uint8_t, void *) = ctx->hw_random;
+
 	memset(ctx, 0, sizeof(*ctx));
-	ctx->initialized = true;
-	ctx->appkey_readable = ATECC608C_BACKEND_ALLOW_APPKEY_READBACK ? true : false;
+	ctx->initialized  = true;
+	ctx->chip         = saved_chip;
+	ctx->hw_random    = saved_hw_fn;
+	ctx->hw_random_ctx = saved_hw_ctx;
 	return ATECC608C_BACKEND_STATUS_OK;
+}
+
+void atecc608c_backend_set_device(atecc608c_backend_ctx_t *ctx, void *chip_dev)
+{
+	if (ctx == NULL) {
+		return;
+	}
+	ctx->chip = chip_dev;
 }
 
 void atecc608c_backend_set_hw_random(atecc608c_backend_ctx_t *ctx,
@@ -68,10 +86,6 @@ atecc608c_backend_status_t atecc608c_backend_random(atecc608c_backend_ctx_t *ctx
 	}
 
 	if (ctx->hw_random != NULL) {
-		/*
-		 * Hardware RNG: call in chunks of at most 32 bytes (one ATECC608C
-		 * Random command returns 32 bytes).
-		 */
 		uint8_t remaining = len;
 		uint8_t offset    = 0;
 		while (remaining > 0u) {
@@ -98,37 +112,31 @@ atecc608c_backend_status_t atecc608c_backend_random(atecc608c_backend_ctx_t *ctx
 
 /* =========================================================================
  * Root credential setters / getters
+ *
+ * AppKey is sealed on the chip (slot 0).  set_appkey() is a no-op -- the
+ * key is already there.  get_appkey() always returns PERMISSION because the
+ * key is intentionally unreadable after the data zone is locked.
+ *
+ * The LMIC framework calls os_getDevKey() → setAppKey() at startup.  The
+ * sketch's os_getDevKey() should return dummy zeros; setAppKey() ignores
+ * them silently.
  * ========================================================================= */
 
 atecc608c_backend_status_t atecc608c_backend_set_appkey(atecc608c_backend_ctx_t *ctx, const uint8_t key[16])
 {
-	if (ctx == NULL || key == NULL) {
-		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
-	}
-	if (!ctx->initialized) {
-		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
-	}
-	memcpy(ctx->appkey, key, 16);
-	ctx->appkey_present = true;
+	/* AppKey lives on the chip (slot 0), not in RAM.  Ignore the provided
+	 * bytes and return OK so the LMIC startup sequence completes normally. */
+	(void)ctx;
+	(void)key;
 	return ATECC608C_BACKEND_STATUS_OK;
 }
 
 atecc608c_backend_status_t atecc608c_backend_get_appkey(atecc608c_backend_ctx_t *ctx, uint8_t key[16])
 {
-	if (ctx == NULL || key == NULL) {
-		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
-	}
-	if (!ctx->initialized) {
-		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
-	}
-	if (!ctx->appkey_present) {
-		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
-	}
-	if (!ctx->appkey_readable) {
-		return ATECC608C_BACKEND_STATUS_PERMISSION;
-	}
-	memcpy(key, ctx->appkey, 16);
-	return ATECC608C_BACKEND_STATUS_OK;
+	/* AppKey is sealed on chip; reading it back is not permitted. */
+	(void)ctx;
+	(void)key;
+	return ATECC608C_BACKEND_STATUS_PERMISSION;
 }
 
 atecc608c_backend_status_t atecc608c_backend_set_appeui(atecc608c_backend_ctx_t *ctx, const uint8_t eui[8])
@@ -248,8 +256,130 @@ atecc608c_backend_status_t atecc608c_backend_get_appskey(atecc608c_backend_ctx_t
 }
 
 /* =========================================================================
- * Internal AES helpers -- mirror lmic_se_default.c exactly, using keys from
- * the backend context instead of the default SE's static variables.
+ * Chip AES helpers
+ *
+ * These use the ATECC608C's on-board AES engine via atecc608c_aes_ecb_encrypt()
+ * with the sealed AppKey in slot 0.  Each call manages its own wake/sleep cycle
+ * so they can be composed freely without the caller managing chip state.
+ * ========================================================================= */
+
+/*
+ * chip_ecb -- perform one AES-128-ECB block encryption using slot 0 (AppKey).
+ *
+ * Wakes the chip, runs the AES command, then sleeps.  in and out may alias.
+ * Returns false on I/O error.
+ */
+static bool chip_ecb(atecc608c_backend_ctx_t *ctx,
+                      const uint8_t in[16], uint8_t out[16])
+{
+	atecc608c_t *dev = (atecc608c_t *)ctx->chip;
+	uint8_t wake_resp[4];
+	if (!atecc608c_wake(dev, wake_resp)) {
+		return false;
+	}
+	bool ok = atecc608c_aes_ecb_encrypt(dev, 0u, in, out);
+	atecc608c_sleep(dev);
+	return ok;
+}
+
+/*
+ * chip_ecb_blocks -- ECB-encrypt each 16-byte block of buf[0..len-1] in place.
+ *
+ * Used to decrypt the join accept body (AES-128-ECB applied block by block,
+ * per LoRaWAN 1.0.x spec -- the "encryption" of the join accept is actually
+ * an ECB encrypt operation, which is its own inverse for this usage).
+ * len must be a multiple of 16.
+ */
+static bool chip_ecb_blocks(atecc608c_backend_ctx_t *ctx, uint8_t *buf, int len)
+{
+	for (int i = 0; i + 16 <= len; i += 16) {
+		if (!chip_ecb(ctx, buf + i, buf + i)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/*
+ * block_shift_left -- shift a 16-byte block left by one bit in-place.
+ * Returns the ejected MSB (0 or 1).  Used by chip_aes_cmac().
+ */
+static uint8_t block_shift_left(uint8_t b[16])
+{
+	uint8_t msb = (b[0] & 0x80u) ? 1u : 0u;
+	for (uint8_t i = 0u; i < 15u; ++i) {
+		b[i] = (uint8_t)((b[i] << 1) | (b[i + 1] >> 7));
+	}
+	b[15] = (uint8_t)(b[15] << 1);
+	return msb;
+}
+
+/*
+ * chip_aes_cmac -- AES-128-CMAC (RFC 4493) using chip slot 0 (AppKey).
+ *
+ * Computes the full 16-byte CMAC of msg[0..len-1] and stores it in mac[0..15].
+ * Uses (n+1) chip AES-ECB calls where n = ceil(len/16).
+ *
+ * Returns false on chip I/O error.
+ */
+static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
+                           const uint8_t *msg, int len, uint8_t mac[16])
+{
+	uint8_t K1[16], K2[16], X[16], tmp[16];
+
+	/* Step 1: derive subkeys K1, K2 from AES(AppKey, 0^16) */
+	memset(tmp, 0, 16);
+	if (!chip_ecb(ctx, tmp, K1)) {
+		return false;
+	}
+
+	if (block_shift_left(K1)) { /* MSB was 1 → XOR with Rb = 0^15 || 0x87 */
+		K1[15] ^= 0x87u;
+	}
+	memcpy(K2, K1, 16);
+	if (block_shift_left(K2)) {
+		K2[15] ^= 0x87u;
+	}
+
+	/* Step 2: process all but the last block */
+	int n = (len + 15) / 16;
+	if (n == 0) {
+		n = 1; /* treat empty message as one padded block */
+	}
+
+	bool complete = (len > 0) && ((len % 16) == 0);
+
+	memset(X, 0, 16);
+	for (int i = 0; i < n - 1; ++i) {
+		for (uint8_t j = 0u; j < 16u; ++j) {
+			X[j] ^= msg[i * 16 + j];
+		}
+		if (!chip_ecb(ctx, X, X)) {
+			return false;
+		}
+	}
+
+	/* Step 3: process last block (with padding if incomplete) */
+	memset(tmp, 0, 16);
+	int tail = complete ? 16 : (len % 16);
+	if (len > 0) {
+		memcpy(tmp, msg + (n - 1) * 16, tail);
+	}
+	if (!complete) {
+		tmp[tail] = 0x80u; /* ISO/IEC 9797-1 padding */
+	}
+
+	const uint8_t *K = complete ? K1 : K2;
+	for (uint8_t j = 0u; j < 16u; ++j) {
+		tmp[j] ^= X[j] ^ K[j];
+	}
+
+	return chip_ecb(ctx, tmp, mac);
+}
+
+/* =========================================================================
+ * Internal software AES helpers (session key operations -- NwkSKey/AppSKey
+ * remain in RAM; chip AES is only used for AppKey operations above).
  * ========================================================================= */
 
 static void backend_micB0(u4_t devaddr, u4_t seqno, int dndir, int len)
@@ -293,33 +423,56 @@ static void backend_cipher(const uint8_t *key, u4_t devaddr, u4_t seqno,
 	os_aes(AES_CTR, payload, len);
 }
 
-/* AES-ECB encrypt using AppKey */
-static void backend_ecb_appkey(atecc608c_backend_ctx_t *ctx, uint8_t *block, int len)
+/*
+ * Append MIC using AppKey (AES-CMAC via chip, no auxiliary B0 block).
+ * Returns false on chip I/O error.
+ */
+static bool backend_appendMic0(atecc608c_backend_ctx_t *ctx, uint8_t *pdu, int len)
 {
-	os_copyMem(AESkey, ctx->appkey, 16);
-	os_aes(AES_ENC, block, len);
+	uint8_t mac[16];
+	if (!chip_aes_cmac(ctx, pdu, len, mac)) {
+		return false;
+	}
+	/* Store the first 4 bytes of the MAC, MSB first */
+	pdu[len + 0] = mac[0];
+	pdu[len + 1] = mac[1];
+	pdu[len + 2] = mac[2];
+	pdu[len + 3] = mac[3];
+	return true;
 }
 
-/* Append MIC using AppKey (AES-CMAC, no auxiliary block) */
-static void backend_appendMic0(atecc608c_backend_ctx_t *ctx, uint8_t *pdu, int len)
+/*
+ * Verify MIC using AppKey (AES-CMAC via chip, no auxiliary B0 block).
+ * Returns 1 if MIC matches, 0 if mismatch, -1 on chip I/O error.
+ */
+static int backend_verifyMic0(atecc608c_backend_ctx_t *ctx, const uint8_t *pdu, int len)
 {
-	os_copyMem(AESkey, ctx->appkey, 16);
-	os_wmsbf4(pdu + len, os_aes(AES_MIC | AES_MICNOAUX, pdu, len));
+	uint8_t mac[16];
+	if (!chip_aes_cmac(ctx, pdu, len, mac)) {
+		return -1;
+	}
+	/* Compare first 4 bytes of computed MAC against stored MIC (MSB first) */
+	return (mac[0] == pdu[len + 0] &&
+	        mac[1] == pdu[len + 1] &&
+	        mac[2] == pdu[len + 2] &&
+	        mac[3] == pdu[len + 3]) ? 1 : 0;
 }
 
-static int backend_verifyMic0(atecc608c_backend_ctx_t *ctx, uint8_t *pdu, int len)
-{
-	os_copyMem(AESkey, ctx->appkey, 16);
-	return os_aes(AES_MIC | AES_MICNOAUX, pdu, len) == os_rmsbf4(pdu + len);
-}
-
-/* Derive NwkSKey and AppSKey from join-accept fields, store in ctx->nwkskey[0]/appskey[0]. */
-static void backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
+/*
+ * Derive NwkSKey and AppSKey from join-accept fields using chip AES.
+ * Stores results into ctx->nwkskey[0] and ctx->appskey[0] (RAM).
+ * Returns false on chip I/O error.
+ */
+static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
                               const uint8_t *artnonce)
 {
 	uint8_t *nwkkey = ctx->nwkskey[0];
 	uint8_t *artkey = ctx->appskey[0];
 
+	/* Build derivation templates:
+	 *   NwkSKey = AES128(AppKey, 0x01 || AppNonce || NetID || DevNonce || pad)
+	 *   AppSKey = AES128(AppKey, 0x02 || AppNonce || NetID || DevNonce || pad)
+	 */
 	os_clearMem(nwkkey, 16);
 	nwkkey[0] = 0x01;
 	os_copyMem(nwkkey + 1, artnonce, LEN_ARTNONCE + LEN_NETID);
@@ -327,11 +480,17 @@ static void backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
 	os_copyMem(artkey, nwkkey, 16);
 	artkey[0] = 0x02;
 
-	backend_ecb_appkey(ctx, nwkkey, 16);
-	backend_ecb_appkey(ctx, artkey, 16);
+	/* Encrypt each template with AppKey via chip */
+	if (!chip_ecb(ctx, nwkkey, nwkkey)) {
+		return false;
+	}
+	if (!chip_ecb(ctx, artkey, artkey)) {
+		return false;
+	}
 
 	ctx->nwkskey_present[0] = true;
 	ctx->appskey_present[0] = true;
+	return true;
 }
 
 /* =========================================================================
@@ -349,7 +508,10 @@ atecc608c_backend_status_t atecc608c_backend_create_join_request(
 	if (!ctx->initialized) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
-	if (!ctx->appkey_present || !ctx->appeui_present || !ctx->deveui_present) {
+	if (ctx->chip == NULL) {
+		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED; /* chip not wired */
+	}
+	if (!ctx->appeui_present || !ctx->deveui_present) {
 		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
 	}
 	if (join_format != LMIC_SecureElement_JoinFormat_JoinRequest10) {
@@ -361,7 +523,10 @@ atecc608c_backend_status_t atecc608c_backend_create_join_request(
 	memcpy(d + OFF_JR_ARTEUI,   ctx->appeui, 8);
 	memcpy(d + OFF_JR_DEVEUI,   ctx->deveui, 8);
 	os_wlsbf2(d + OFF_JR_DEVNONCE, LMIC.devNonce);
-	backend_appendMic0(ctx, d, OFF_JR_MIC);
+
+	if (!backend_appendMic0(ctx, d, OFF_JR_MIC)) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
 
 	LMIC.devNonce++;
 	DO_DEVDB(LMIC.devNonce, devNonce);
@@ -382,8 +547,8 @@ atecc608c_backend_status_t atecc608c_backend_decode_join_accept(
 	if (!ctx->initialized) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
-	if (!ctx->appkey_present) {
-		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
+	if (ctx->chip == NULL) {
+		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
 	if (join_format != LMIC_SecureElement_JoinFormat_JoinRequest10) {
 		return ATECC608C_BACKEND_STATUS_UNSUPPORTED;
@@ -393,17 +558,25 @@ atecc608c_backend_status_t atecc608c_backend_decode_join_accept(
 		os_copyMem(join_accept_clear, join_accept, join_accept_len);
 	}
 
-	/* Decrypt the join accept (AES-ECB, applied to bytes 1..) */
-	backend_ecb_appkey(ctx, join_accept_clear + 1, join_accept_len - 1);
+	/* Decrypt join accept body (AES-128-ECB, applied block-by-block from byte 1) */
+	if (!chip_ecb_blocks(ctx, join_accept_clear + 1, join_accept_len - 1)) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
 
 	/* Verify MIC */
-	if (!backend_verifyMic0(ctx, join_accept_clear, join_accept_len - 4)) {
+	int mic_ok = backend_verifyMic0(ctx, join_accept_clear, join_accept_len - 4);
+	if (mic_ok < 0) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
+	if (mic_ok == 0) {
 		return ATECC608C_BACKEND_STATUS_CRYPTO_ERROR;
 	}
 
 	/* Derive and store session keys */
-	backend_sessKeys(ctx, LMIC.devNonce - 1,
-	                 &join_accept_clear[OFF_JA_ARTNONCE]);
+	if (!backend_sessKeys(ctx, LMIC.devNonce - 1,
+	                      &join_accept_clear[OFF_JA_ARTNONCE])) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
 
 	return ATECC608C_BACKEND_STATUS_OK;
 }
@@ -422,11 +595,6 @@ atecc608c_backend_status_t atecc608c_backend_encode_message(
 	if (!ctx->initialized) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
-	/*
-	 * Only Unicast is supported for uplink encode, matching the default SE.
-	 * message_len includes the 4 MIC bytes (not yet computed); minimum frame
-	 * is MHDR + 4-byte FHDR + 4-byte MIC = 9 bytes.
-	 */
 	if (key_index != 0u || message_len < 9u) {
 		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
 	}
@@ -438,12 +606,9 @@ atecc608c_backend_status_t atecc608c_backend_encode_message(
 		os_copyMem(cipher_out, message, message_len);
 	}
 
-	const uint8_t nData = message_len - 4u; /* frame length without MIC */
+	const uint8_t nData = message_len - 4u;
 
 	if ((uint8_t)(payload_index + 1u) < nData) {
-		/*
-		 * Non-empty payload: select AppSKey (port != 0) or NwkSKey (port == 0).
-		 */
 		const uint8_t *enc_key =
 			(cipher_out[payload_index] == 0u) ? ctx->nwkskey[0] : ctx->appskey[0];
 		backend_cipher(
@@ -518,7 +683,7 @@ atecc608c_backend_status_t atecc608c_backend_decode_message(
 		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
 	}
 
-	uint8_t nPayload = phy_len - 4u; /* strip MIC */
+	uint8_t nPayload = phy_len - 4u;
 
 	if (clear_out != phy_payload) {
 		os_copyMem(clear_out, phy_payload, nPayload);

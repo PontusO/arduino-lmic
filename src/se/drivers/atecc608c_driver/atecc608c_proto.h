@@ -175,6 +175,67 @@ bool atecc608c_lock_config_zone(atecc608c_t *dev, uint16_t summary_crc);
  */
 bool atecc608c_config_zone_is_locked(atecc608c_t *dev, bool *out_locked);
 
+/*
+ * Report whether the data+OTP zone is locked.
+ *
+ * Reads the LockValue byte (byte 86 of the config zone) from the chip.
+ * The value 0x55 means unlocked; any other value means locked.
+ *
+ * On success sets *out_locked and returns true.
+ * Returns false on I/O error.
+ * The chip must be awake.
+ */
+bool atecc608c_data_zone_is_locked(atecc608c_t *dev, bool *out_locked);
+
+/*
+ * Write 32 bytes to block 0 of a data zone slot.
+ *
+ * slot     Slot index, 0..15.
+ * data     32 bytes to write.  For 16-byte AES key slots write the key in
+ *          bytes 0..15 and pad bytes 16..31 with zeros.
+ *
+ * The data zone must be unlocked (plain writes are rejected after locking).
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_write_data_slot(atecc608c_t *dev, uint8_t slot,
+                                const uint8_t data[32]);
+
+/*
+ * Read 32 bytes from block 0 of a data zone slot.
+ *
+ * slot     Slot index, 0..15.
+ * data     Output buffer, 32 bytes.
+ *
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_read_data_slot(atecc608c_t *dev, uint8_t slot,
+                               uint8_t data[32]);
+
+/*
+ * AES-128 ECB encrypt one 16-byte block using the key stored in a chip slot.
+ *
+ * slot     Key slot index, 0..15.  The slot must have KeyType=6 (AES) in
+ *          KeyConfig and ChipOptions.AESEnable must be set.
+ *          The data zone must be locked for the key to be used.
+ *
+ * input    16-byte plaintext block.
+ * output   16-byte ciphertext block.  May alias input (in-place is safe).
+ *
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_aes_ecb_encrypt(atecc608c_t *dev, uint8_t slot,
+                                const uint8_t input[16], uint8_t output[16]);
+
+/*
+ * Lock the data+OTP zone.
+ *
+ * *** WARNING: Locking the data zone is permanent and irreversible.
+ *
+ * The config zone must already be locked.
+ * The chip must be awake.  Returns true if the zone was successfully locked.
+ */
+bool atecc608c_lock_data_zone(atecc608c_t *dev);
+
 #ifdef __cplusplus
 }
 #endif

@@ -588,3 +588,228 @@ bool atecc608c_generate_random_stub(atecc608c_t *dev,
 
     return true;
 }
+
+/*
+ * atecc608c_data_zone_is_locked
+ *
+ * Same 4-byte read as config_zone_is_locked but checks byte 86 (LockValue).
+ */
+bool atecc608c_data_zone_is_locked(atecc608c_t *dev, bool *out_locked)
+{
+    if (!dev || !dev->initialized || !out_locked) {
+        return false;
+    }
+
+    uint8_t tx[8];
+    tx[0] = 0x03u;
+    tx[1] = 0x07u;
+    tx[2] = 0x02u;  /* opcode: Read */
+    tx[3] = 0x00u;  /* param1: 4-byte read, config zone */
+    tx[4] = 0x15u;  /* param2 lo: word address for byte 84 */
+    tx[5] = 0x00u;
+    uint16_t crc = atecc608c_crc16(&tx[1], 5u);
+    tx[6] = (uint8_t)(crc & 0xFFu);
+    tx[7] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(1);
+
+    uint8_t rx[7];
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    if (rx[0] != 7u) {
+        return false;
+    }
+
+    uint16_t rx_crc_calc = atecc608c_crc16(rx, 5u);
+    uint16_t rx_crc_recv = (uint16_t)rx[5] | ((uint16_t)rx[6] << 8);
+    if (rx_crc_calc != rx_crc_recv) {
+        return false;
+    }
+
+    /* rx[3] = byte 86 = LockValue; 0x55 = unlocked */
+    *out_locked = (rx[3] != 0x55u);
+    return true;
+}
+
+/*
+ * atecc608c_write_data_slot
+ *
+ * 32-byte write to block 0 of a data zone slot.
+ * Command: opcode=0x12 (Write), param1=0x82 (32-byte, data zone),
+ *          param2 = slot << 3.
+ */
+bool atecc608c_write_data_slot(atecc608c_t *dev, uint8_t slot,
+                                const uint8_t data[32])
+{
+    if (!dev || !dev->initialized || !data || slot > 15u) {
+        return false;
+    }
+
+    uint8_t tx[40];
+    tx[0] = 0x03u;         /* word address: command */
+    tx[1] = 0x27u;         /* count = 39: 1+1+2+32+2+1(count) */
+    tx[2] = 0x12u;         /* opcode: Write */
+    tx[3] = 0x82u;         /* param1: 32-byte write, data zone */
+    tx[4] = (uint8_t)(slot << 3);  /* param2 lo: slot address */
+    tx[5] = 0x00u;         /* param2 hi */
+    memcpy(&tx[6], data, 32u);
+    uint16_t crc = atecc608c_crc16(&tx[1], 37u); /* count through last data byte */
+    tx[38] = (uint8_t)(crc & 0xFFu);
+    tx[39] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(26); /* tEXEC for Write: ~26 ms max */
+
+    uint8_t rx[4];
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    return (rx[0] == 4u && rx[1] == 0x00u);
+}
+
+/*
+ * atecc608c_read_data_slot
+ *
+ * 32-byte read from block 0 of a data zone slot.
+ * Command: opcode=0x02 (Read), param1=0x82 (32-byte, data zone),
+ *          param2 = slot << 3.
+ */
+bool atecc608c_read_data_slot(atecc608c_t *dev, uint8_t slot,
+                               uint8_t data[32])
+{
+    if (!dev || !dev->initialized || !data || slot > 15u) {
+        return false;
+    }
+
+    uint8_t tx[8];
+    tx[0] = 0x03u;
+    tx[1] = 0x07u;         /* count */
+    tx[2] = 0x02u;         /* opcode: Read */
+    tx[3] = 0x82u;         /* param1: 32-byte read, data zone */
+    tx[4] = (uint8_t)(slot << 3);
+    tx[5] = 0x00u;
+    uint16_t crc = atecc608c_crc16(&tx[1], 5u);
+    tx[6] = (uint8_t)(crc & 0xFFu);
+    tx[7] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(1);
+
+    uint8_t rx[35]; /* count(1) + data(32) + crc(2) */
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    if (rx[0] != 35u) {
+        return false;
+    }
+
+    uint16_t rx_crc_calc = atecc608c_crc16(rx, 33u);
+    uint16_t rx_crc_recv = (uint16_t)rx[33] | ((uint16_t)rx[34] << 8);
+    if (rx_crc_calc != rx_crc_recv) {
+        return false;
+    }
+
+    memcpy(data, &rx[1], 32u);
+    return true;
+}
+
+/*
+ * atecc608c_aes_ecb_encrypt
+ *
+ * AES command (opcode 0x51, mode 0x00 = ECB encrypt) using the key in slot.
+ * Command: count=0x17, data=16-byte input.
+ * Response: count=0x13, 16-byte output, crc.
+ */
+bool atecc608c_aes_ecb_encrypt(atecc608c_t *dev, uint8_t slot,
+                                const uint8_t input[16], uint8_t output[16])
+{
+    if (!dev || !dev->initialized || !input || !output || slot > 15u) {
+        return false;
+    }
+
+    uint8_t tx[24];
+    tx[0] = 0x03u;         /* word address: command */
+    tx[1] = 0x17u;         /* count = 23 */
+    tx[2] = 0x51u;         /* opcode: AES */
+    tx[3] = 0x00u;         /* mode: ECB encrypt */
+    tx[4] = slot;          /* param2 lo: key slot index */
+    tx[5] = 0x00u;         /* param2 hi */
+    memcpy(&tx[6], input, 16u);
+    uint16_t crc = atecc608c_crc16(&tx[1], 21u);
+    tx[22] = (uint8_t)(crc & 0xFFu);
+    tx[23] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(5); /* tEXEC for AES: ~2 ms typical */
+
+    uint8_t rx[19];
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    if (rx[0] != 19u) {
+        return false;
+    }
+
+    uint16_t rx_crc_calc = atecc608c_crc16(rx, 17u);
+    uint16_t rx_crc_recv = (uint16_t)rx[17] | ((uint16_t)rx[18] << 8);
+    if (rx_crc_calc != rx_crc_recv) {
+        return false;
+    }
+
+    memcpy(output, &rx[1], 16u);
+    return true;
+}
+
+/*
+ * atecc608c_lock_data_zone
+ *
+ * Lock command: mode=0x81 (SummaryCheck=skip | zone=data+OTP).
+ */
+bool atecc608c_lock_data_zone(atecc608c_t *dev)
+{
+    if (!dev || !dev->initialized) {
+        return false;
+    }
+
+    uint8_t tx[8];
+    tx[0] = 0x03u;
+    tx[1] = 0x07u;         /* count */
+    tx[2] = 0x17u;         /* opcode: Lock */
+    tx[3] = 0x81u;         /* mode: skip CRC | data+OTP zone */
+    tx[4] = 0x00u;         /* param2 lo (ignored with SummaryCheck=skip) */
+    tx[5] = 0x00u;         /* param2 hi */
+    uint16_t crc = atecc608c_crc16(&tx[1], 5u);
+    tx[6] = (uint8_t)(crc & 0xFFu);
+    tx[7] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(35); /* tEXEC for Lock: ~32 ms max */
+
+    uint8_t rx[4];
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    return (rx[0] == 4u && rx[1] == 0x00u);
+}

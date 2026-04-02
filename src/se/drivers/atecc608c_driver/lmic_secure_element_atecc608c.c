@@ -314,9 +314,11 @@ LMIC_SecureElement_Atecc608c_decodeMessage(
 
 LMIC_SecureElement_Error_t LMIC_ABI_STD
 LMIC_SecureElement_Atecc608c_configure(
+	void *chip_dev,
 	bool (*hw_random_fn)(uint8_t *out, uint8_t len, void *ctx),
 	void *hw_ctx)
 {
+	atecc608c_backend_set_device(&g_atecc608c, chip_dev);
 	atecc608c_backend_set_hw_random(&g_atecc608c, hw_random_fn, hw_ctx);
 	return LMIC_SecureElement_Error_OK;
 }

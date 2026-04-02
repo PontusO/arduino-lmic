@@ -42,14 +42,24 @@ typedef enum atecc608c_backend_status_e {
 
 typedef struct atecc608c_backend_ctx_s {
     bool initialized;
-    bool appkey_present;
-    bool appkey_readable;
     bool appeui_present;
     bool deveui_present;
     bool nwkskey_present[5];
     bool appskey_present[5];
 
-    uint8_t appkey[16];
+    /*
+     * Pointer to the ATECC608C hardware device (atecc608c_t *), stored as
+     * void * to keep this header free of C++ Wire.h dependencies.
+     *
+     * When non-NULL, AppKey crypto operations (join request MIC, join accept
+     * decrypt, session key derivation) are performed by the chip's on-board
+     * AES engine using the sealed AppKey in slot 0.  The AppKey never touches
+     * host RAM.
+     *
+     * Set via atecc608c_backend_set_device().
+     */
+    void *chip;
+
     uint8_t appeui[8];
     uint8_t deveui[8];
     uint8_t nwkskey[5][16];
@@ -66,6 +76,12 @@ typedef struct atecc608c_backend_ctx_s {
 
 /* lifecycle */
 atecc608c_backend_status_t atecc608c_backend_init(atecc608c_backend_ctx_t *ctx);
+
+/*
+ * Register the ATECC608C hardware device with the backend.
+ * chip_dev is a pointer to an initialised atecc608c_t, passed as void *.
+ */
+void atecc608c_backend_set_device(atecc608c_backend_ctx_t *ctx, void *chip_dev);
 
 /*
  * Register a hardware RNG function.  When set, atecc608c_backend_random() calls

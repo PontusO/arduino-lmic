@@ -28,7 +28,7 @@
  *   - LoRa radio module wired and pin map filled in below.
  *   - lmic_project_config.h must select the correct region and radio.
  *   - lmic_project_config.h must define:
- *       #define LMIC_SECURE_ELEMENT  Atecc608c
+ *       #define LMIC_CFG_SecureElement_DRIVER  Atecc608c
  *     to activate this driver instead of the default software SE.
  *
  * Credential configuration:
@@ -68,16 +68,12 @@ static const u1_t PROGMEM APPEUI[8] = { FILLMEIN };
 // This should also be in little-endian format, see above.
 static const u1_t PROGMEM DEVEUI[8] = { FILLMEIN };
 
-// This key should be in big-endian format (or, since it is not really a
-// number but a block of memory, endianness does not really apply). In
-// practice, a key taken from ttnctl can be copied as-is.
-static const u1_t PROGMEM APPKEY[16] = { FILLMEIN };
-
 // LMIC credential callbacks -- called from LMIC_reset() to push credentials
 // into the active secure element.
 void os_getArtEui(u1_t *buf) { memcpy_P(buf, APPEUI, 8); }
 void os_getDevEui(u1_t *buf) { memcpy_P(buf, DEVEUI, 8); }
-void os_getDevKey(u1_t *buf) { memcpy_P(buf, APPKEY, 16); }
+// AppKey is sealed in ATECC608C slot 0 -- the backend ignores these bytes.
+void os_getDevKey(u1_t *buf) { memset(buf, 0, 16); }
 
 /* ---- ATECC608C configuration --------------------------------------------- */
 
@@ -302,7 +298,7 @@ void setup()
 		 * This must be called before LMIC_reset() so that any random
 		 * numbers generated during initialisation use the hardware source.
 		 */
-		LMIC_SecureElement_Atecc608c_configure(atecc608c_hw_random, &g_hw_dev);
+		LMIC_SecureElement_Atecc608c_configure(&g_hw_dev, atecc608c_hw_random, &g_hw_dev);
 		}
 
 	// LMIC init.  LMIC_reset() calls LMIC_SecureElement_initialize() and
