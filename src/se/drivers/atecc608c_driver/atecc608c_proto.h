@@ -80,8 +80,100 @@ bool atecc608c_idle(atecc608c_t *dev);
  * Issue the ATECC608C Random command (opcode 0x1B) and return up to 32 hardware-
  * generated random bytes in out[0..len-1].  len must be in [1, 32].
  * The chip must be awake before this call; it is left awake on return.
+ *
+ * NOTE: The Random command returns a fixed, predictable sequence when the
+ * configuration zone is not locked.  Lock the config zone (see below) to
+ * enable true hardware random number generation.
  */
 bool atecc608c_random_bytes(atecc608c_t *dev, uint8_t *out, uint8_t len);
+
+/* ==========================================================================
+ * Configuration zone access
+ *
+ * The ATECC608C configuration zone is a 128-byte OTP-like region that
+ * defines the chip's slot layout, key access policies, and I2C address.
+ * It is written word-by-word before being permanently locked.
+ *
+ * Locking sequence:
+ *   1. Call atecc608c_read_config_zone() to inspect the current contents.
+ *   2. Check atecc608c_config_zone_is_locked() -- abort if already locked.
+ *   3. Call atecc608c_write_config_word() for each word you want to change
+ *      (only bytes 16..127 are writable; bytes 0..15 are factory-set).
+ *   4. Call atecc608c_read_config_zone() again to get the final contents.
+ *   5. Compute atecc608c_crc16() over all 128 bytes.
+ *   6. Call atecc608c_lock_config_zone() with that CRC.
+ *
+ * All functions in this section require the chip to be awake.
+ * ========================================================================== */
+
+/*
+ * Sentinel value for the summary_crc argument of atecc608c_lock_config_zone()
+ * that requests locking WITHOUT the CRC integrity check.
+ *
+ * Using this in production is strongly discouraged: if the zone was
+ * mis-programmed the chip will be permanently locked in a broken state.
+ * Prefer always computing and passing the real CRC.
+ */
+#define ATECC608C_LOCK_NO_CRC  0xFFFFu
+
+/*
+ * Read the complete 128-byte configuration zone into out[128].
+ *
+ * Issues four 32-byte block reads (the maximum the Read command returns
+ * in one call).  Validates the CRC on each response before copying.
+ *
+ * Returns true on success, false on I/O error or CRC mismatch.
+ */
+bool atecc608c_read_config_zone(atecc608c_t *dev, uint8_t out[128]);
+
+/*
+ * Write one 4-byte word to the configuration zone.
+ *
+ * byte_offset  Byte position within the config zone.  Must be a multiple
+ *              of 4 and in the range [16, 128).  Bytes 0..15 are factory-
+ *              programmed (serial number, revision) and cannot be written.
+ *
+ * data         Four bytes in the order they appear in the zone (i.e. the
+ *              byte at byte_offset is data[0]).
+ *
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_write_config_word(atecc608c_t *dev, uint8_t byte_offset,
+                                  const uint8_t data[4]);
+
+/*
+ * Lock the configuration zone.
+ *
+ * summary_crc  CRC-16/IBM computed over all 128 bytes of the config zone
+ *              exactly as they stand on the chip at the moment of locking
+ *              (including the factory bytes 0..15 that you did not write).
+ *              The chip re-computes the same CRC internally; if the values
+ *              disagree the lock command is rejected, protecting against
+ *              accidental locking of a corrupt or partially-written zone.
+ *
+ *              Pass ATECC608C_LOCK_NO_CRC to skip this check (not
+ *              recommended for production use).
+ *
+ * *** WARNING: Locking the configuration zone is permanent and irreversible.
+ *              After locking, the slot layout, key types, access policies,
+ *              and I2C address cannot be changed under any circumstances.
+ *              Always verify the zone contents before calling this function.
+ *
+ * The chip must be awake.  Returns true if the zone was successfully locked.
+ */
+bool atecc608c_lock_config_zone(atecc608c_t *dev, uint16_t summary_crc);
+
+/*
+ * Report whether the configuration zone is locked.
+ *
+ * Reads the LockConfig byte (byte 87 of the config zone) from the chip.
+ * The value 0x55 means unlocked; any other value means locked.
+ *
+ * On success sets *out_locked and returns true.
+ * Returns false on I/O error.
+ * The chip must be awake.
+ */
+bool atecc608c_config_zone_is_locked(atecc608c_t *dev, bool *out_locked);
 
 #ifdef __cplusplus
 }
