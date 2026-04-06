@@ -285,13 +285,15 @@ static u1_t readRegister(u2_t addr) {
 // Write `len` bytes from `buf` to the FIFO buffer starting at buffer address `addr`
 static void writeBuffer(u1_t addr, xref2u1_t buf, u1_t len) {
     // Set the TX buffer base address. Leave RX base address as 0
-    u1_t baseAddr[SX126X_BUFF_BASE_ADDR_LEN] = {addr, 0};
-    lmic_hal_spi_write(SetBufferBaseAddress, baseAddr, SX126X_BUFF_BASE_ADDR_LEN);
+    const u1_t baseAddr[SX126X_BUFF_BASE_ADDR_LEN] = {addr, 0};
+    lmic_hal_spi_write(SetBufferBaseAddress, baseAddr, sizeof(baseAddr));
 
     // Prepend the offset byte to the data being written to the buffer
-    u1_t new_buf[len + 1];
+    // TODO(tmm@mcci.com): rewrite following #1043 to avoid extra copy,
+    // extra stack use.
+    u1_t new_buf[256];
     new_buf[0] = SX126X_FIFO_OFFSET;
-    memcpy(&new_buf[1], buf, len);
+    os_copyMem(new_buf + 1, buf, len);
     lmic_hal_spi_write(WriteBuffer, new_buf, len + 1);
 }
 
@@ -784,17 +786,15 @@ void radio_config(void) {
     // This register modification must be done after a Power On Reset, or a wake-up from cold Start.
     writeRegister(TxClampConfig, (readRegister(TxClampConfig) | 0x1E));
 
-    // Some boards need explicit crystal trim values for stable frequency accuracy.
-    writeRegister(XTATrim, LMIC_SX126X_XTA_TRIM_VALUE);
-    writeRegister(XTBTrim, LMIC_SX126X_XTB_TRIM_VALUE);
-#if LMIC_DEBUG_LEVEL > 0
-    LMIC_DEBUG_PRINTF(
-        "%"LMIC_PRId_ostime_t": XTAL trim, XTA=%02X XTB=%02X\n",
-        os_getTime(),
-        readRegister(XTATrim),
-        readRegister(XTBTrim)
-    );
-#endif
+    // Apply board-specific crystal oscillator trim values if configured.
+    // Some board designs require different XTA/XTB trim capacitance than the
+    // chip reset default (0x05) for adequate frequency accuracy.
+    uint8_t xta = lmic_hal_querySX126xXTATrim();
+    uint8_t xtb = lmic_hal_querySX126xXTBTrim();
+    if (xta != LMIC_HAL_SX126X_XTAL_TRIM_USE_DEFAULT)
+        writeRegister(XTATrim, xta);
+    if (xtb != LMIC_HAL_SX126X_XTAL_TRIM_USE_DEFAULT)
+        writeRegister(XTBTrim, xtb);
 
     // DC-DC regulator is hardware dependent
     if (lmic_hal_queryUsingDcdc()) {

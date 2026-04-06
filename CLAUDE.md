@@ -89,6 +89,20 @@ gh pr merge PRNUM --merge --delete-branch
 - `README.md` -- landing page with links to detailed docs
 - **GitHub Pages** (Doxygen): https://mcci-catena.github.io/arduino-lmic/
 
+## Versioning Strategy
+
+Version is encoded in `src/lmic/lmic.h` as `ARDUINO_LMIC_VERSION_CALC(major, minor, patch, local)`. The `local` field serves as a pre-release counter. `library.properties` is only updated at actual release time.
+
+During development, version bumps follow these rules:
+
+- **Patch fixes** on master: `X.Y.(Z+1)-preN` (e.g., 6.0.1-pre1)
+- **Feature additions**: `X.(Y+1).0-preN` (e.g., 6.1.0-pre1)
+- **Breaking changes**: `(X+1).0.0-preN` (e.g., 7.0.0-pre1)
+
+The pre-release counter (`local` field) increments with each version bump commit. On a feature branch, if you fix a bug in passing, bump `preN` -- don't change the patch/minor/major level mid-branch. The patch/minor/major level is set once when the branch is created and reflects the nature of the *most significant* change on the branch.
+
+At release time, `local` resets to 0 and `library.properties` is updated to match.
+
 ## Release Process
 
 Reference: issue #978 documents the v5.0.0 release checklist.
