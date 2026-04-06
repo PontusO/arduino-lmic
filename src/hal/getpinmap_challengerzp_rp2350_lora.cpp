@@ -55,6 +55,9 @@ public:
 	virtual bool queryUsingDIO2AsRfSwitch(void) override { return true; };
 
 	virtual bool queryUsingDIO3AsTCXOSwitch(void) override { return false; };
+
+	virtual uint8_t querySX126xXTATrim(void) override { return 0x12; };
+	virtual uint8_t querySX126xXTBTrim(void) override { return 0x12; };
 	};
 
 static HalConfiguration_ChallengerZP_RP2350_LoRa_t myConfig;

@@ -128,11 +128,6 @@
 #define DIO3OutVoltCont                            0x0920 // Reset Value 0x01 - Use only with Semtech-provided code samples
 #define EventMask                                  0x0944 // Reset Value 0x00 - Use only with Semtech-provided code samples
 
-// Some SX126x board designs require different crystal trim capacitance than
-// the reset defaults.
-#define LMIC_SX126X_XTA_TRIM_VALUE                 0x12
-#define LMIC_SX126X_XTB_TRIM_VALUE                 0x12
-
 #define LoRaSyncWordMSBPublic                      0x34
 #define LoRaSyncWordMSBPrivate                     0x14
 #define LoRaSyncWordLSBPublic                      0x44
