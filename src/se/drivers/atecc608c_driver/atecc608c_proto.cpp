@@ -408,8 +408,11 @@ bool atecc608c_write_config_word(atecc608c_t *dev, uint8_t byte_offset,
  *
  *   [0x03, count=0x07, opcode=0x17, mode, param2_lo, param2_hi, crc_lo, crc_hi]
  *
- *   mode = 0x01  lock config zone, CRC check ENABLED  (recommended)
- *   mode = 0x81  lock config zone, CRC check DISABLED (ATECC608C_LOCK_NO_CRC)
+ *   mode = 0x00  lock config zone, CRC check ENABLED  (recommended)
+ *   mode = 0x80  lock config zone, CRC check DISABLED (ATECC608C_LOCK_NO_CRC)
+ *
+ *   Lock zone select: bits [1:0] = 0x00 for config, 0x01 for data+OTP.
+ *   CRC skip:         bit  [7]   = 0 to verify CRC, 1 to skip.
  *
  * When CRC checking is enabled the chip re-computes a CRC-16/IBM over the
  * entire 128-byte config zone and compares it with param2 (little-endian).
@@ -432,7 +435,7 @@ bool atecc608c_lock_config_zone(atecc608c_t *dev, uint16_t summary_crc)
          * Bypass mode: the chip skips the CRC comparison.
          * Param2 must be 0x0000 when mode bit 7 is set.
          */
-        mode      = 0x81u;
+        mode      = 0x80u;  /* config zone, skip CRC */
         param2_lo = 0x00u;
         param2_hi = 0x00u;
     } else {
@@ -441,7 +444,7 @@ bool atecc608c_lock_config_zone(atecc608c_t *dev, uint16_t summary_crc)
          * The caller must compute the CRC over all 128 config zone bytes as
          * they exist on the chip -- including the factory bytes 0..15.
          */
-        mode      = 0x01u;
+        mode      = 0x00u;  /* config zone, verify CRC */
         param2_lo = (uint8_t)(summary_crc & 0xFFu);
         param2_hi = (uint8_t)(summary_crc >> 8);
     }

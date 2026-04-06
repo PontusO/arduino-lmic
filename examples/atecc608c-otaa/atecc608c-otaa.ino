@@ -7,21 +7,28 @@
  * including, but not limited to, copying, modification and redistribution.
  * NO WARRANTY OF ANY KIND IS PROVIDED.
  *
- * Layer 4 integration test: OTAA join and uplink using the ATECC608C
- * secure element driver.
+ * ATECC608C OTAA example -- hardware-secured LoRaWAN join and uplink.
  *
  * This sketch performs a complete LoRaWAN OTAA join via The Things Network
  * (or any compatible network server) and then transmits a "Hello, world!"
- * payload on a 60-second interval.  The ATECC608C chip is used as the
- * secure element backend, which means:
+ * payload on a 60-second interval.  All cryptographic keys are managed by
+ * the ATECC608C secure element:
  *
- *   - All join-request and uplink MIC / encryption operations are performed
- *     by the atecc608c_backend crypto layer using LMIC's AES engine.
- *   - All random numbers (used for DevNonce generation etc.) are drawn from
- *     the ATECC608C hardware True RNG via the atecc608c_random_bytes()
- *     command.
- *   - Keys are held in the backend context in RAM (same as the default SE);
- *     the ATECC608C is used for its hardware RNG only in this driver revision.
+ *   - AppKey is sealed in chip slot 0 (never touches host RAM).
+ *   - Join request MIC and join accept decryption use the chip's on-board
+ *     AES-128 engine via slot 0.
+ *   - Session keys (NwkSKey, AppSKey) are derived via chip AES, written
+ *     to chip slots 2 and 5, then scrubbed from RAM.
+ *   - All data-frame MIC and payload encryption use the chip's AES engine
+ *     with the session key slots.  No key material persists in host RAM.
+ *   - Random numbers (DevNonce etc.) are drawn from the ATECC608C hardware
+ *     True RNG.
+ *
+ * Chip provisioning:
+ *   The ATECC608C must be provisioned before this sketch will work:
+ *     Stage 1: atecc608c-provision      (config zone layout and lock)
+ *     Stage 2: atecc608c-provision-keys  (AppKey injection)
+ *     Stage 3: atecc608c-provision-lock-data (data zone lock)
  *
  * Prerequisites:
  *   - ATECC608C wired to the default I2C bus at address 0x60.
@@ -34,7 +41,8 @@
  * Credential configuration:
  *   Replace the FILLMEIN placeholders with values from your network console.
  *   AppEUI and DevEUI must be in little-endian (LSB first) byte order.
- *   AppKey is in big-endian (MSB first) byte order.
+ *   AppKey is NOT provided here -- it is sealed in the ATECC608C and used
+ *   directly by the chip without ever exposing the key to the host CPU.
  *
  * Do not forget to define the radio type correctly in
  * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
@@ -159,31 +167,11 @@ void onEvent(ev_t ev)
 		case EV_JOINED:
 			Serial.println(F("EV_JOINED"));
 			{
-			u4_t netid   = 0;
-			devaddr_t devaddr = 0;
-			u1_t nwkKey[16];
-			u1_t artKey[16];
-			LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
 			Serial.print(F("  netid:   "));
-			Serial.println(netid, DEC);
+			Serial.println(LMIC.netid, DEC);
 			Serial.print(F("  devaddr: "));
-			Serial.println(devaddr, HEX);
-			Serial.print(F("  AppSKey: "));
-			for (size_t i = 0; i < sizeof(artKey); ++i)
-				{
-				if (i != 0)
-					Serial.print('-');
-				printHex2(artKey[i]);
-				}
-			Serial.println();
-			Serial.print(F("  NwkSKey: "));
-			for (size_t i = 0; i < sizeof(nwkKey); ++i)
-				{
-				if (i != 0)
-					Serial.print('-');
-				printHex2(nwkKey[i]);
-				}
-			Serial.println();
+			Serial.println(LMIC.devaddr, HEX);
+			Serial.println(F("  Session keys sealed on ATECC608C (slots 2/5)"));
 			}
 			// Disable link check validation (automatically enabled during join,
 			// but slow data rates change max TX size).
@@ -294,16 +282,15 @@ void setup()
 			}
 
 		/*
-		 * Register the hardware RNG with the SE backend.
-		 * This must be called before LMIC_reset() so that any random
-		 * numbers generated during initialisation use the hardware source.
+		 * Register the chip and hardware RNG with the SE backend.
+		 * This must be called before LMIC_reset() so that the backend
+		 * has the chip pointer for AppKey crypto and hardware RNG.
 		 */
 		LMIC_SecureElement_Atecc608c_configure(&g_hw_dev, atecc608c_hw_random, &g_hw_dev);
 		}
 
-	// LMIC init.  LMIC_reset() calls LMIC_SecureElement_initialize() and
-	// then pushes the credentials from os_getDevKey / os_getArtEui /
-	// os_getDevEui into the active secure element backend.
+	// LMIC init.  LMIC_reset() reinitialises the SE backend (preserving
+	// the chip pointer and RNG hook set by configure() above).
 	os_init();
 	LMIC_reset();
 

@@ -17,18 +17,17 @@
  *
  * KEYS INJECTED
  * -------------
- *   Slot 0  AppKey    16-byte AES-128 root key for OTAA join.
- *                     Per-device, unique to each chip.
- *   Slot 3  AuthKey   16-byte HMAC key used to authenticate encrypted writes
- *                     to slots 1 and 2 after the data zone is locked (Stage 3).
- *                     Same value can be shared across all chips at a site, or
- *                     be per-device -- operator's choice.
+ *   Slot 0   AppKey    16-byte AES-128 root key for OTAA join (LoRaWAN 1.0/1.1).
+ *                      Per-device, unique to each chip.
+ *   Slot 1   NwkKey    16-byte AES-128 network root key (LoRaWAN 1.1 only).
+ *                      Per-device.  Leave as zeros for LoRaWAN 1.0.x.
+ *   Slot 12  IOProtKey 16-byte I2C bus transport encryption key (optional).
+ *                      Same value across all devices in a product line.
+ *                      Leave as zeros if IO Protection is not used.
  *
- * OPTIONAL (ABP or pre-provisioned OTAA):
- *   Slot 1  NwkSKey   16-byte network session key.
- *   Slot 2  AppSKey   16-byte application session key.
- *   These can be injected with this sketch if the device will use ABP, or left
- *   empty (zeros) if OTAA is used (the LMIC stack writes them after join).
+ * Session key slots (2-7) are left empty -- the firmware writes them after
+ * each OTAA join using the chip's AES engine.  Custom credential slots (8-11)
+ * and the device ID slot (15) can be written separately if needed.
  *
  * WRITE FORMAT
  * ------------
@@ -344,24 +343,75 @@ void setup(void)
 	Serial.println(F("WARNING: keys entered here are transmitted in plain text over Serial."));
 	Serial.println(F("Ensure no one can sniff the serial port during this operation."));
 
-	if (!inject_key(0, F("AppKey")))
+	if (!inject_key(0, F("AppKey (slot 0 -- LoRaWAN root key)")))
 		{
 		Serial.println(F("\nFATAL: AppKey injection failed."));
 		for (;;)
 			;
 		}
 
-	if (!inject_key(3, F("AuthKey")))
+	Serial.println(F("\nNwkKey is only needed for LoRaWAN 1.1."));
+	Serial.println(F("Press Enter to skip, or enter 32 hex characters:"));
+	Serial.print(F("  > "));
+
+	/* Wait for first character to decide skip vs inject */
+	while (!Serial.available())
+		;
+	char first = (char)Serial.peek();
+	if (first == '\n' || first == '\r')
 		{
-		Serial.println(F("\nFATAL: AuthKey injection failed."));
-		for (;;)
-			;
+		Serial.read(); /* consume the newline */
+		Serial.println(F("  Skipped NwkKey (slot 1)."));
+		}
+	else
+		{
+		/* User started typing hex -- read 16 bytes and inject */
+		uint8_t nwkkey[16];
+		readHexBytes(nwkkey, 16u);
+		Serial.println(F("  Writing to slot 1..."));
+		if (!write_key_to_slot(1, nwkkey))
+			{
+			memset(nwkkey, 0, sizeof(nwkkey));
+			Serial.println(F("\nFATAL: NwkKey injection failed."));
+			for (;;)
+				;
+			}
+		memset(nwkkey, 0, sizeof(nwkkey));
+		Serial.println(F("  PASS -- slot 1 write accepted."));
+		}
+
+	Serial.println(F("\nIO Protection Key is optional (for I2C bus encryption)."));
+	Serial.println(F("Press Enter to skip, or enter 32 hex characters:"));
+	Serial.print(F("  > "));
+
+	while (!Serial.available())
+		;
+	first = (char)Serial.peek();
+	if (first == '\n' || first == '\r')
+		{
+		Serial.read();
+		Serial.println(F("  Skipped IO Protection Key (slot 12)."));
+		}
+	else
+		{
+		uint8_t iokey[16];
+		readHexBytes(iokey, 16u);
+		Serial.println(F("  Writing to slot 12..."));
+		if (!write_key_to_slot(12, iokey))
+			{
+			memset(iokey, 0, sizeof(iokey));
+			Serial.println(F("\nFATAL: IO Protection Key injection failed."));
+			for (;;)
+				;
+			}
+		memset(iokey, 0, sizeof(iokey));
+		Serial.println(F("  PASS -- slot 12 write accepted."));
 		}
 
 	Serial.println(F("\n======================="));
 	Serial.println(F("Key injection complete."));
 	Serial.println(F("The chip is now ready for Stage 3 (data zone lock)."));
-	Serial.println(F("After Stage 3 the keys cannot be read back in plain text."));
+	Serial.println(F("After Stage 3 root keys cannot be read or overwritten."));
 	}
 
 void loop(void)

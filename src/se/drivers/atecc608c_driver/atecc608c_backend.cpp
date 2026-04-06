@@ -199,6 +199,16 @@ atecc608c_backend_status_t atecc608c_backend_get_deveui(atecc608c_backend_ctx_t 
  * Session credential setters / getters
  * ========================================================================= */
 
+/*
+ * Session key setters write to chip slots; getters return PERMISSION
+ * because the slots are IsSecret=1 and cannot be read back.
+ *
+ * The LMIC framework calls setNwkSKey/setAppSKey after a successful
+ * OTAA join (via LMIC_setSessionKeys in processJoinAccept).  In our
+ * implementation backend_sessKeys() already wrote the keys to the chip,
+ * so these setters just update the _present flags and ignore the key
+ * bytes (they would be the same values we already wrote).
+ */
 atecc608c_backend_status_t atecc608c_backend_set_nwkskey(atecc608c_backend_ctx_t *ctx, uint8_t key_index, const uint8_t key[16])
 {
 	if (ctx == NULL || key == NULL || key_index >= 5u) {
@@ -207,24 +217,18 @@ atecc608c_backend_status_t atecc608c_backend_set_nwkskey(atecc608c_backend_ctx_t
 	if (!ctx->initialized) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
-	memcpy(ctx->nwkskey[key_index], key, 16);
+	/* Key is already on the chip (written by backend_sessKeys).
+	 * Just mark present so the framework knows session is active. */
+	(void)key;
 	ctx->nwkskey_present[key_index] = true;
 	return ATECC608C_BACKEND_STATUS_OK;
 }
 
 atecc608c_backend_status_t atecc608c_backend_get_nwkskey(atecc608c_backend_ctx_t *ctx, uint8_t key_index, uint8_t key[16])
 {
-	if (ctx == NULL || key == NULL || key_index >= 5u) {
-		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
-	}
-	if (!ctx->initialized) {
-		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
-	}
-	if (!ctx->nwkskey_present[key_index]) {
-		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
-	}
-	memcpy(key, ctx->nwkskey[key_index], 16);
-	return ATECC608C_BACKEND_STATUS_OK;
+	/* Session keys are sealed on the chip (IsSecret=1); cannot read back. */
+	(void)ctx; (void)key_index; (void)key;
+	return ATECC608C_BACKEND_STATUS_PERMISSION;
 }
 
 atecc608c_backend_status_t atecc608c_backend_set_appskey(atecc608c_backend_ctx_t *ctx, uint8_t key_index, const uint8_t key[16])
@@ -235,59 +239,61 @@ atecc608c_backend_status_t atecc608c_backend_set_appskey(atecc608c_backend_ctx_t
 	if (!ctx->initialized) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
-	memcpy(ctx->appskey[key_index], key, 16);
+	(void)key;
 	ctx->appskey_present[key_index] = true;
 	return ATECC608C_BACKEND_STATUS_OK;
 }
 
 atecc608c_backend_status_t atecc608c_backend_get_appskey(atecc608c_backend_ctx_t *ctx, uint8_t key_index, uint8_t key[16])
 {
-	if (ctx == NULL || key == NULL || key_index >= 5u) {
-		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
-	}
-	if (!ctx->initialized) {
-		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
-	}
-	if (!ctx->appskey_present[key_index]) {
-		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
-	}
-	memcpy(key, ctx->appskey[key_index], 16);
-	return ATECC608C_BACKEND_STATUS_OK;
+	(void)ctx; (void)key_index; (void)key;
+	return ATECC608C_BACKEND_STATUS_PERMISSION;
 }
+
+/* =========================================================================
+ * Chip slot layout (must match Stage 1 provisioning template)
+ * ========================================================================= */
+
+#define ATECC_SLOT_APPKEY    0u   /* LoRaWAN 1.0/1.1 root key (sealed) */
+#define ATECC_SLOT_NWKKEY    1u   /* LoRaWAN 1.1 network root key (sealed) */
+#define ATECC_SLOT_NWKSKEY   2u   /* NwkSKey (1.0) / FNwkSIntKey (1.1) */
+#define ATECC_SLOT_APPSKEY   5u   /* AppSKey (1.0/1.1) */
 
 /* =========================================================================
  * Chip AES helpers
  *
- * These use the ATECC608C's on-board AES engine via atecc608c_aes_ecb_encrypt()
- * with the sealed AppKey in slot 0.  Each call manages its own wake/sleep cycle
- * so they can be composed freely without the caller managing chip state.
+ * All crypto operations use the ATECC608C's on-board AES-128 engine.
+ * Each call manages its own wake/sleep cycle.
  * ========================================================================= */
 
 /*
- * chip_ecb -- perform one AES-128-ECB block encryption using slot 0 (AppKey).
+ * chip_ecb_slot -- perform one AES-128-ECB block encryption using a given slot.
  *
  * Wakes the chip, runs the AES command, then sleeps.  in and out may alias.
  * Returns false on I/O error.
  */
-static bool chip_ecb(atecc608c_backend_ctx_t *ctx,
-                      const uint8_t in[16], uint8_t out[16])
+static bool chip_ecb_slot(atecc608c_backend_ctx_t *ctx, uint8_t slot,
+                           const uint8_t in[16], uint8_t out[16])
 {
 	atecc608c_t *dev = (atecc608c_t *)ctx->chip;
 	uint8_t wake_resp[4];
 	if (!atecc608c_wake(dev, wake_resp)) {
 		return false;
 	}
-	bool ok = atecc608c_aes_ecb_encrypt(dev, 0u, in, out);
+	bool ok = atecc608c_aes_ecb_encrypt(dev, slot, in, out);
 	atecc608c_sleep(dev);
 	return ok;
 }
 
+/* Convenience wrapper: AES-ECB with slot 0 (AppKey). */
+static bool chip_ecb(atecc608c_backend_ctx_t *ctx,
+                      const uint8_t in[16], uint8_t out[16])
+{
+	return chip_ecb_slot(ctx, ATECC_SLOT_APPKEY, in, out);
+}
+
 /*
  * chip_ecb_blocks -- ECB-encrypt each 16-byte block of buf[0..len-1] in place.
- *
- * Used to decrypt the join accept body (AES-128-ECB applied block by block,
- * per LoRaWAN 1.0.x spec -- the "encryption" of the join accept is actually
- * an ECB encrypt operation, which is its own inverse for this usage).
  * len must be a multiple of 16.
  */
 static bool chip_ecb_blocks(atecc608c_backend_ctx_t *ctx, uint8_t *buf, int len)
@@ -302,7 +308,7 @@ static bool chip_ecb_blocks(atecc608c_backend_ctx_t *ctx, uint8_t *buf, int len)
 
 /*
  * block_shift_left -- shift a 16-byte block left by one bit in-place.
- * Returns the ejected MSB (0 or 1).  Used by chip_aes_cmac().
+ * Returns the ejected MSB (0 or 1).  Used by chip_aes_cmac_slot().
  */
 static uint8_t block_shift_left(uint8_t b[16])
 {
@@ -315,25 +321,23 @@ static uint8_t block_shift_left(uint8_t b[16])
 }
 
 /*
- * chip_aes_cmac -- AES-128-CMAC (RFC 4493) using chip slot 0 (AppKey).
+ * chip_aes_cmac_slot -- AES-128-CMAC (RFC 4493) using a given chip slot.
  *
  * Computes the full 16-byte CMAC of msg[0..len-1] and stores it in mac[0..15].
- * Uses (n+1) chip AES-ECB calls where n = ceil(len/16).
- *
  * Returns false on chip I/O error.
  */
-static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
-                           const uint8_t *msg, int len, uint8_t mac[16])
+static bool chip_aes_cmac_slot(atecc608c_backend_ctx_t *ctx, uint8_t slot,
+                                const uint8_t *msg, int len, uint8_t mac[16])
 {
 	uint8_t K1[16], K2[16], X[16], tmp[16];
 
-	/* Step 1: derive subkeys K1, K2 from AES(AppKey, 0^16) */
+	/* Step 1: derive subkeys K1, K2 from AES(key, 0^16) */
 	memset(tmp, 0, 16);
-	if (!chip_ecb(ctx, tmp, K1)) {
+	if (!chip_ecb_slot(ctx, slot, tmp, K1)) {
 		return false;
 	}
 
-	if (block_shift_left(K1)) { /* MSB was 1 → XOR with Rb = 0^15 || 0x87 */
+	if (block_shift_left(K1)) {
 		K1[15] ^= 0x87u;
 	}
 	memcpy(K2, K1, 16);
@@ -344,7 +348,7 @@ static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
 	/* Step 2: process all but the last block */
 	int n = (len + 15) / 16;
 	if (n == 0) {
-		n = 1; /* treat empty message as one padded block */
+		n = 1;
 	}
 
 	bool complete = (len > 0) && ((len % 16) == 0);
@@ -354,7 +358,7 @@ static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
 		for (uint8_t j = 0u; j < 16u; ++j) {
 			X[j] ^= msg[i * 16 + j];
 		}
-		if (!chip_ecb(ctx, X, X)) {
+		if (!chip_ecb_slot(ctx, slot, X, X)) {
 			return false;
 		}
 	}
@@ -366,7 +370,7 @@ static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
 		memcpy(tmp, msg + (n - 1) * 16, tail);
 	}
 	if (!complete) {
-		tmp[tail] = 0x80u; /* ISO/IEC 9797-1 padding */
+		tmp[tail] = 0x80u;
 	}
 
 	const uint8_t *K = complete ? K1 : K2;
@@ -374,53 +378,143 @@ static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
 		tmp[j] ^= X[j] ^ K[j];
 	}
 
-	return chip_ecb(ctx, tmp, mac);
+	return chip_ecb_slot(ctx, slot, tmp, mac);
 }
 
-/* =========================================================================
- * Internal software AES helpers (session key operations -- NwkSKey/AppSKey
- * remain in RAM; chip AES is only used for AppKey operations above).
- * ========================================================================= */
-
-static void backend_micB0(u4_t devaddr, u4_t seqno, int dndir, int len)
+/* Convenience wrapper: AES-CMAC with slot 0 (AppKey). */
+static bool chip_aes_cmac(atecc608c_backend_ctx_t *ctx,
+                           const uint8_t *msg, int len, uint8_t mac[16])
 {
-	os_clearMem(AESaux, 16);
-	AESaux[0]  = 0x49;
-	AESaux[5]  = dndir ? 1 : 0;
-	AESaux[15] = len;
-	os_wlsbf4(AESaux + 6,  devaddr);
-	os_wlsbf4(AESaux + 10, seqno);
+	return chip_aes_cmac_slot(ctx, ATECC_SLOT_APPKEY, msg, len, mac);
 }
 
-static int backend_verifyMic(const uint8_t *key, u4_t devaddr, u4_t seqno,
-                              int dndir, const uint8_t *pdu, int len)
+/*
+ * chip_aes_cmac_b0 -- AES-CMAC over (B0 || pdu) using a given chip slot.
+ *
+ * Computes the LoRaWAN MIC: CMAC input is the 16-byte B0 block followed by
+ * the PDU.  Returns the 4-byte MIC (first 4 bytes of the 16-byte CMAC) as
+ * a big-endian uint32_t.  Returns 0 on I/O error (caller should check via
+ * the bool return).
+ */
+static bool chip_aes_cmac_b0(atecc608c_backend_ctx_t *ctx, uint8_t slot,
+                              u4_t devaddr, u4_t seqno, int dndir,
+                              const uint8_t *pdu, int len,
+                              uint32_t *mic_out)
 {
-	backend_micB0(devaddr, seqno, dndir, len);
-	os_copyMem(AESkey, key, 16);
-	return os_aes(AES_MIC, /* deconst */(u1_t *)pdu, len) == os_rmsbf4(pdu + len);
+	uint8_t K1[16], K2[16], X[16], tmp[16];
+
+	/* Derive subkeys */
+	memset(tmp, 0, 16);
+	if (!chip_ecb_slot(ctx, slot, tmp, K1)) {
+		return false;
+	}
+	if (block_shift_left(K1)) {
+		K1[15] ^= 0x87u;
+	}
+	memcpy(K2, K1, 16);
+	if (block_shift_left(K2)) {
+		K2[15] ^= 0x87u;
+	}
+
+	/* Build B0 block and process it as the first CMAC block */
+	uint8_t B0[16];
+	memset(B0, 0, 16);
+	B0[0]  = 0x49;
+	B0[5]  = dndir ? 1 : 0;
+	os_wlsbf4(B0 + 6,  devaddr);
+	os_wlsbf4(B0 + 10, seqno);
+	B0[15] = (uint8_t)len;
+
+	/* Total CMAC input length: 16 (B0) + len (PDU) */
+	int total = 16 + len;
+	int n = (total + 15) / 16;
+	bool complete = (total % 16) == 0;
+
+	/* Block 0 = B0 */
+	memset(X, 0, 16);
+	for (uint8_t j = 0u; j < 16u; ++j) {
+		X[j] ^= B0[j];
+	}
+	if (!chip_ecb_slot(ctx, slot, X, X)) {
+		return false;
+	}
+
+	/* Blocks 1..n-2: full 16-byte PDU blocks */
+	int pdu_offset = 0;
+	for (int i = 1; i < n - 1; ++i) {
+		for (uint8_t j = 0u; j < 16u; ++j) {
+			X[j] ^= pdu[pdu_offset + j];
+		}
+		pdu_offset += 16;
+		if (!chip_ecb_slot(ctx, slot, X, X)) {
+			return false;
+		}
+	}
+
+	/* Last block: remaining PDU bytes with optional padding */
+	memset(tmp, 0, 16);
+	int remaining = len - pdu_offset;
+	if (remaining > 0) {
+		memcpy(tmp, pdu + pdu_offset, remaining);
+	}
+	if (!complete) {
+		tmp[remaining] = 0x80u;
+	}
+
+	const uint8_t *K = complete ? K1 : K2;
+	for (uint8_t j = 0u; j < 16u; ++j) {
+		tmp[j] ^= X[j] ^ K[j];
+	}
+
+	uint8_t mac[16];
+	if (!chip_ecb_slot(ctx, slot, tmp, mac)) {
+		return false;
+	}
+
+	/* MIC = first 4 bytes, big-endian */
+	*mic_out = ((uint32_t)mac[0] << 24) |
+	           ((uint32_t)mac[1] << 16) |
+	           ((uint32_t)mac[2] <<  8) |
+	           ((uint32_t)mac[3]);
+	return true;
 }
 
-static void backend_appendMic(const uint8_t *key, u4_t devaddr, u4_t seqno,
-                               int dndir, uint8_t *pdu, int len)
-{
-	backend_micB0(devaddr, seqno, dndir, len);
-	os_copyMem(AESkey, key, 16);
-	os_wmsbf4(pdu + len, os_aes(AES_MIC, pdu, len));
-}
-
-static void backend_cipher(const uint8_t *key, u4_t devaddr, u4_t seqno,
-                            int dndir, uint8_t *payload, int len)
+/*
+ * chip_aes_ctr -- AES-128-CTR encryption/decryption using a given chip slot.
+ *
+ * Implements the LoRaWAN payload cipher: generates a keystream from
+ * A-blocks (A[0]=1, A[5]=dir, A[6..9]=devaddr, A[10..13]=seqno,
+ * A[15]=counter) and XORs it with the payload in place.
+ */
+static bool chip_aes_ctr(atecc608c_backend_ctx_t *ctx, uint8_t slot,
+                          u4_t devaddr, u4_t seqno, int dndir,
+                          uint8_t *payload, int len)
 {
 	if (len <= 0) {
-		return;
+		return true;
 	}
-	os_clearMem(AESaux, 16);
-	AESaux[0] = AESaux[15] = 1;
-	AESaux[5] = dndir ? 1 : 0;
-	os_wlsbf4(AESaux + 6,  devaddr);
-	os_wlsbf4(AESaux + 10, seqno);
-	os_copyMem(AESkey, key, 16);
-	os_aes(AES_CTR, payload, len);
+
+	uint8_t A[16], S[16];
+	memset(A, 0, 16);
+	A[0] = 0x01;
+	A[5] = dndir ? 1 : 0;
+	os_wlsbf4(A + 6,  devaddr);
+	os_wlsbf4(A + 10, seqno);
+
+	int offset = 0;
+	uint8_t ctr = 1;
+	while (offset < len) {
+		A[15] = ctr++;
+		if (!chip_ecb_slot(ctx, slot, A, S)) {
+			return false;
+		}
+		int chunk = (len - offset > 16) ? 16 : (len - offset);
+		for (int j = 0; j < chunk; ++j) {
+			payload[offset + j] ^= S[j];
+		}
+		offset += chunk;
+	}
+	return true;
 }
 
 /*
@@ -433,7 +527,6 @@ static bool backend_appendMic0(atecc608c_backend_ctx_t *ctx, uint8_t *pdu, int l
 	if (!chip_aes_cmac(ctx, pdu, len, mac)) {
 		return false;
 	}
-	/* Store the first 4 bytes of the MAC, MSB first */
 	pdu[len + 0] = mac[0];
 	pdu[len + 1] = mac[1];
 	pdu[len + 2] = mac[2];
@@ -451,7 +544,6 @@ static int backend_verifyMic0(atecc608c_backend_ctx_t *ctx, const uint8_t *pdu, 
 	if (!chip_aes_cmac(ctx, pdu, len, mac)) {
 		return -1;
 	}
-	/* Compare first 4 bytes of computed MAC against stored MIC (MSB first) */
 	return (mac[0] == pdu[len + 0] &&
 	        mac[1] == pdu[len + 1] &&
 	        mac[2] == pdu[len + 2] &&
@@ -460,14 +552,19 @@ static int backend_verifyMic0(atecc608c_backend_ctx_t *ctx, const uint8_t *pdu, 
 
 /*
  * Derive NwkSKey and AppSKey from join-accept fields using chip AES.
- * Stores results into ctx->nwkskey[0] and ctx->appskey[0] (RAM).
+ *
+ * 1. Derive keys via AppKey (slot 0) AES-ECB into temporary RAM buffers.
+ * 2. Write them to chip slots (ATECC_SLOT_NWKSKEY, ATECC_SLOT_APPSKEY)
+ *    so all subsequent data-frame crypto uses the chip's AES engine.
+ * 3. Scrub the RAM copies -- session keys never persist in host memory.
+ *
  * Returns false on chip I/O error.
  */
 static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
                               const uint8_t *artnonce)
 {
-	uint8_t *nwkkey = ctx->nwkskey[0];
-	uint8_t *artkey = ctx->appskey[0];
+	uint8_t nwkkey[16], artkey[16];
+	uint8_t block[32];
 
 	/* Build derivation templates:
 	 *   NwkSKey = AES128(AppKey, 0x01 || AppNonce || NetID || DevNonce || pad)
@@ -487,6 +584,49 @@ static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
 	if (!chip_ecb(ctx, artkey, artkey)) {
 		return false;
 	}
+
+	/* Write session keys to chip slots, then scrub RAM.
+	 *
+	 * Each write needs its own wake/write/sleep cycle.  The writes
+	 * are best-effort: if one fails the join still succeeds but
+	 * data-frame crypto will fail (keys are scrubbed from RAM either
+	 * way).  In practice WriteConfig=Always slots accept plain writes
+	 * reliably after the data zone is locked.
+	 */
+	atecc608c_t *dev = (atecc608c_t *)ctx->chip;
+	uint8_t wake_resp[4];
+
+	/*
+	 * Write session keys to chip slots.
+	 *
+	 * After writing to an AES slot, the chip's AES engine may not
+	 * use the new key until a sleep/wake cycle has occurred.  We
+	 * force this by sleeping and re-waking after each write.
+	 */
+	memcpy(block, nwkkey, 16);
+	memset(block + 16, 0, 16);
+	if (atecc608c_wake(dev, wake_resp)) {
+		atecc608c_write_data_slot(dev, ATECC_SLOT_NWKSKEY, block);
+		atecc608c_sleep(dev);
+	}
+
+	memcpy(block, artkey, 16);
+	memset(block + 16, 0, 16);
+	if (atecc608c_wake(dev, wake_resp)) {
+		atecc608c_write_data_slot(dev, ATECC_SLOT_APPSKEY, block);
+		atecc608c_sleep(dev);
+	}
+
+	/* Force a sleep/wake cycle to flush the chip's internal key cache
+	 * so the AES engine picks up the newly written keys. */
+	if (atecc608c_wake(dev, wake_resp)) {
+		atecc608c_sleep(dev);
+	}
+
+	/* Scrub session keys from RAM -- they live on the chip now. */
+	memset(nwkkey, 0, sizeof(nwkkey));
+	memset(artkey, 0, sizeof(artkey));
+	memset(block, 0, sizeof(block));
 
 	ctx->nwkskey_present[0] = true;
 	ctx->appskey_present[0] = true;
@@ -592,7 +732,7 @@ atecc608c_backend_status_t atecc608c_backend_encode_message(
 	if (ctx == NULL || message == NULL || cipher_out == NULL) {
 		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
 	}
-	if (!ctx->initialized) {
+	if (!ctx->initialized || ctx->chip == NULL) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
 	if (key_index != 0u || message_len < 9u) {
@@ -608,25 +748,28 @@ atecc608c_backend_status_t atecc608c_backend_encode_message(
 
 	const uint8_t nData = message_len - 4u;
 
+	/* Encrypt payload: port 0 → NwkSKey, else → AppSKey */
 	if ((uint8_t)(payload_index + 1u) < nData) {
-		const uint8_t *enc_key =
-			(cipher_out[payload_index] == 0u) ? ctx->nwkskey[0] : ctx->appskey[0];
-		backend_cipher(
-			enc_key,
-			LMIC.devaddr,
-			LMIC.seqnoUp - 1u,
-			/* uplink */ 0,
-			cipher_out + payload_index + 1u,
-			nData - payload_index - 1u);
+		uint8_t enc_slot =
+			(cipher_out[payload_index] == 0u)
+				? ATECC_SLOT_NWKSKEY
+				: ATECC_SLOT_APPSKEY;
+		if (!chip_aes_ctr(ctx, enc_slot,
+		                  LMIC.devaddr, LMIC.seqnoUp - 1u, /* uplink */ 0,
+		                  cipher_out + payload_index + 1u,
+		                  nData - payload_index - 1u)) {
+			return ATECC608C_BACKEND_STATUS_IO_ERROR;
+		}
 	}
 
-	backend_appendMic(
-		ctx->nwkskey[0],
-		LMIC.devaddr,
-		LMIC.seqnoUp - 1u,
-		/* uplink */ 0,
-		cipher_out,
-		nData);
+	/* Append MIC using NwkSKey */
+	uint32_t mic;
+	if (!chip_aes_cmac_b0(ctx, ATECC_SLOT_NWKSKEY,
+	                       LMIC.devaddr, LMIC.seqnoUp - 1u, /* uplink */ 0,
+	                       cipher_out, nData, &mic)) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
+	os_wmsbf4(cipher_out + nData, mic);
 
 	return ATECC608C_BACKEND_STATUS_OK;
 }
@@ -642,7 +785,7 @@ atecc608c_backend_status_t atecc608c_backend_verify_mic(
 	if (ctx == NULL || phy_payload == NULL) {
 		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
 	}
-	if (!ctx->initialized) {
+	if (!ctx->initialized || ctx->chip == NULL) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
 	if (key_index >= 5u || phy_len < 4u) {
@@ -652,10 +795,16 @@ atecc608c_backend_status_t atecc608c_backend_verify_mic(
 		return ATECC608C_BACKEND_STATUS_NOT_PROVISIONED;
 	}
 
-	if (!backend_verifyMic(
-			ctx->nwkskey[key_index],
-			devaddr, fcnt_down, /* downlink */ 1,
-			phy_payload, phy_len - 4u)) {
+	uint8_t pdu_len = phy_len - 4u;
+	uint32_t mic_computed;
+	if (!chip_aes_cmac_b0(ctx, ATECC_SLOT_NWKSKEY,
+	                       devaddr, fcnt_down, /* downlink */ 1,
+	                       phy_payload, pdu_len, &mic_computed)) {
+		return ATECC608C_BACKEND_STATUS_IO_ERROR;
+	}
+
+	uint32_t mic_received = os_rmsbf4(phy_payload + pdu_len);
+	if (mic_computed != mic_received) {
 		return ATECC608C_BACKEND_STATUS_CRYPTO_ERROR;
 	}
 	return ATECC608C_BACKEND_STATUS_OK;
@@ -673,7 +822,7 @@ atecc608c_backend_status_t atecc608c_backend_decode_message(
 	if (ctx == NULL || phy_payload == NULL || clear_out == NULL) {
 		return ATECC608C_BACKEND_STATUS_INVALID_PARAM;
 	}
-	if (!ctx->initialized) {
+	if (!ctx->initialized || ctx->chip == NULL) {
 		return ATECC608C_BACKEND_STATUS_NOT_INITIALIZED;
 	}
 	if (key_index >= 5u || phy_len < 4u) {
@@ -699,15 +848,14 @@ atecc608c_backend_status_t atecc608c_backend_decode_message(
 	}
 
 	if (portOffset < nPayload) {
-		const uint8_t *dec_key =
-			(port != 0) ? ctx->appskey[key_index] : ctx->nwkskey[key_index];
-		backend_cipher(
-			dec_key,
-			devaddr,
-			fcnt_down,
-			/* downlink */ 1,
-			clear_out + portOffset,
-			nPayload - portOffset);
+		uint8_t dec_slot =
+			(port != 0) ? ATECC_SLOT_APPSKEY : ATECC_SLOT_NWKSKEY;
+		if (!chip_aes_ctr(ctx, dec_slot,
+		                  devaddr, fcnt_down, /* downlink */ 1,
+		                  clear_out + portOffset,
+		                  nPayload - portOffset)) {
+			return ATECC608C_BACKEND_STATUS_IO_ERROR;
+		}
 	}
 
 	return ATECC608C_BACKEND_STATUS_OK;

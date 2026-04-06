@@ -9,10 +9,16 @@
  *
  * ATECC608C crypto backend -- LoRaWAN key storage and cryptographic operations.
  *
- * Implements the SE backend API (join request/accept, MIC, AES-CTR, session
- * key derivation) using LMIC's built-in AES engine.  The ATECC608C chip is
- * used for hardware random number generation via a registered callback;
- * a software xorshift32 fallback is used if no hardware RNG is registered.
+ * All cryptographic operations use the ATECC608C's on-board AES-128 engine.
+ * No key material persists in host RAM during normal operation:
+ *
+ *   - AppKey is sealed in chip slot 0 (never touches host RAM).
+ *   - Session keys (NwkSKey, AppSKey) are derived via chip AES, written to
+ *     chip slots 2 and 5, then scrubbed from RAM.
+ *   - Data-frame MIC (AES-CMAC) and payload encryption (AES-CTR) use the
+ *     chip's AES engine with the session key slots.
+ *   - Hardware random numbers via registered callback; software xorshift32
+ *     fallback if no hardware RNG is registered.
  *
  *******************************************************************************/
 
@@ -51,10 +57,10 @@ typedef struct atecc608c_backend_ctx_s {
      * Pointer to the ATECC608C hardware device (atecc608c_t *), stored as
      * void * to keep this header free of C++ Wire.h dependencies.
      *
-     * When non-NULL, AppKey crypto operations (join request MIC, join accept
-     * decrypt, session key derivation) are performed by the chip's on-board
-     * AES engine using the sealed AppKey in slot 0.  The AppKey never touches
-     * host RAM.
+     * All crypto operations (root key and session key) are performed by
+     * the chip's on-board AES engine.  Keys never persist in host RAM:
+     *   - AppKey in slot 0 (sealed at provisioning)
+     *   - NwkSKey in slot 2, AppSKey in slot 5 (written after OTAA join)
      *
      * Set via atecc608c_backend_set_device().
      */
@@ -62,8 +68,6 @@ typedef struct atecc608c_backend_ctx_s {
 
     uint8_t appeui[8];
     uint8_t deveui[8];
-    uint8_t nwkskey[5][16];
-    uint8_t appskey[5][16];
 
     /*
      * Optional hardware RNG hook.  When set, backend_random() calls this

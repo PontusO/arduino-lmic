@@ -14,11 +14,20 @@
  * Permanently locks the ATECC608C data+OTP zone, activating all slot access
  * policies that were encoded in the configuration zone during Stage 1:
  *
- *   Slot 0  AppKey    WriteConfig=Never  -- sealed forever; no read or write.
- *   Slot 1  NwkSKey   WriteConfig=Encrypt -- only writable via authenticated
- *   Slot 2  AppSKey   WriteConfig=Encrypt    encrypted write using slot 3.
- *   Slot 3  AuthKey   WriteConfig=Never  -- sealed forever; no read or write.
- *   4-15    Reserved  WriteConfig=Never  -- permanently empty.
+ *   Slot  Key                 Access after lock
+ *   ----  ------------------  --------------------------------
+ *    0    AppKey               WriteConfig=Never   IsSecret=1  (sealed)
+ *    1    NwkKey               WriteConfig=Never   IsSecret=1  (sealed)
+ *    2    NwkSKey/FNwkSIntKey  WriteConfig=Always  IsSecret=1
+ *    3    SNwkSIntKey          WriteConfig=Always  IsSecret=1
+ *    4    NwkSEncKey           WriteConfig=Always  IsSecret=1
+ *    5    AppSKey              WriteConfig=Always  IsSecret=1
+ *    6    JSIntKey             WriteConfig=Always  IsSecret=1
+ *    7    JSEncKey             WriteConfig=Always  IsSecret=1
+ *    8-11 Custom credentials   WriteConfig=Always  IsSecret=1
+ *   12    IO Protection Key    WriteConfig=Never   IsSecret=1  (sealed)
+ *   13-14 Reserved             WriteConfig=Never   IsSecret=0
+ *   15    Device ID            WriteConfig=Never   IsSecret=0
  *
  * PREREQUISITES
  * -------------
@@ -170,7 +179,7 @@ void setup(void)
 	if (data_locked)
 		{
 		Serial.println(F("Data zone is already locked.  Nothing to do."));
-		Serial.println(F("  AppKey and AuthKey are sealed."));
+		Serial.println(F("  Root keys (AppKey, NwkKey, IO Protection) are sealed."));
 		Serial.println(F("  The chip is ready for deployment."));
 		for (;;)
 			;
@@ -192,9 +201,9 @@ void setup(void)
 	Serial.println(F("\n*** POINT OF NO RETURN ***"));
 	Serial.println(F("Locking the data zone is permanent and cannot be undone."));
 	Serial.println(F("After locking:"));
-	Serial.println(F("  - AppKey (slot 0) and AuthKey (slot 3) are sealed forever."));
-	Serial.println(F("  - NwkSKey/AppSKey (slots 1/2) require encrypted write to update."));
-	Serial.println(F("  - No slot can be read in plain text."));
+	Serial.println(F("  - Root keys (slots 0, 1, 12) are sealed forever."));
+	Serial.println(F("  - Session key slots (2-7) accept plain writes from firmware."));
+	Serial.println(F("  - All secret slots (IsSecret=1) cannot be read back."));
 	Serial.println(F("Ensure Stage 2 (key injection) is complete and keys are saved."));
 
 	if (!waitForYes())
@@ -216,9 +225,7 @@ void setup(void)
 
 	if (!locked)
 		{
-		Serial.print(F("ERROR: lock failed.  Status byte: 0x"));
-		printHex(atecc608c_last_lock_status);
-		Serial.println();
+		Serial.println(F("ERROR: lock failed."));
 		for (;;)
 			;
 		}

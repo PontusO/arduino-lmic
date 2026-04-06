@@ -21,13 +21,32 @@
  *
  * SLOT LAYOUT
  * -----------
- *   Slot 0  AppKey      AES-128  Write-once at factory; never readable.
- *   Slot 1  NwkSKey     AES-128  Encrypted write (auth: slot 3); never readable.
- *   Slot 2  AppSKey     AES-128  Encrypted write (auth: slot 3); never readable.
- *   Slot 3  Auth key    AES-128  Write-once at factory; never readable.
- *                                Authorises encrypted writes to slots 1 and 2
- *                                after the data zone is locked (Stage 3).
- *   4-15    Reserved    --       Never writable; never readable.
+ *   Slot  Key                 LoRaWAN   Access after data zone lock
+ *   ----  ------------------  --------  --------------------------------
+ *    0    AppKey               1.0/1.1  WriteConfig=Never   IsSecret=1
+ *    1    NwkKey               1.1      WriteConfig=Never   IsSecret=1
+ *    2    NwkSKey/FNwkSIntKey  1.0/1.1  WriteConfig=Always  IsSecret=1
+ *    3    SNwkSIntKey          1.1      WriteConfig=Always  IsSecret=1
+ *    4    NwkSEncKey           1.1      WriteConfig=Always  IsSecret=1
+ *    5    AppSKey              1.0/1.1  WriteConfig=Always  IsSecret=1
+ *    6    JSIntKey             1.1      WriteConfig=Always  IsSecret=1
+ *    7    JSEncKey             1.1      WriteConfig=Always  IsSecret=1
+ *    8    Custom credential 1  user     WriteConfig=Always  IsSecret=1
+ *    9    Custom credential 2  user     WriteConfig=Always  IsSecret=1
+ *   10    Custom credential 3  user     WriteConfig=Always  IsSecret=1
+ *   11    Custom credential 4  user     WriteConfig=Always  IsSecret=1
+ *   12    IO Protection Key    bus      WriteConfig=Never   IsSecret=1
+ *   13    Reserved             --       WriteConfig=Never   IsSecret=0
+ *   14    Reserved             --       WriteConfig=Never   IsSecret=0
+ *   15    Device ID / serial   --       WriteConfig=Never   IsSecret=0
+ *
+ * Root keys (0-1): sealed at factory provisioning, never writable again.
+ * Session keys (2-7): firmware writes after each OTAA join via plain write.
+ *   Keys are unreadable (IsSecret=1) but usable by the AES command.
+ * Custom (8-11): available for MQTT/TLS-PSK/cloud credentials.
+ * IO Protection (12): optional I2C bus transport encryption key.
+ * Reserved (13-14): locked empty for future use.
+ * Device ID (15): non-secret readable identifier.
  *
  * NOTE: The access policies encoded in SlotConfig / KeyConfig only take
  * effect after the DATA zone is locked (Stage 3).  Before the data zone is
@@ -96,10 +115,12 @@ static atecc608c_t dev;
  * Bytes 0..15 are factory-programmed (serial number, revision number) and
  * are read back from the chip; they are never overwritten.
  *
- * The template is written in 4-byte words.  Bytes 84..91 (UserExtra,
- * LockValue, LockConfig, SlotLocked, ChipOptions) are skipped -- the lock
- * bytes are managed exclusively by the Lock command, and the others are
- * left at their factory defaults.
+ * The template is written in 4-byte words.  Bytes 84..87 (UserExtra,
+ * UserExtraAdd, LockValue, LockConfig) are skipped -- the lock bytes are
+ * managed exclusively by the Lock command.
+ *
+ * Bytes 88..91 (SlotLocked, ChipOptions) ARE written to enable AES and
+ * pre-configure the IO Protection Key slot.
  *
  * SlotConfig bit layout (2 bytes per slot, little-endian):
  *   Low byte  bits [3:0]  ReadKey       -- key slot for encrypted reads
@@ -123,40 +144,86 @@ static atecc608c_t dev;
  *             bits [15:13] X509id       -- 0
  * -------------------------------------------------------------------------- */
 
+/* ---- Slot map ---------------------------------------------------------------
+ *
+ *   Slot  Key                 LoRaWAN   Access
+ *   ----  ------------------  --------  --------------------------------
+ *    0    AppKey               1.0/1.1  WriteConfig=Never   IsSecret=1
+ *    1    NwkKey               1.1      WriteConfig=Never   IsSecret=1
+ *    2    NwkSKey/FNwkSIntKey  1.0/1.1  WriteConfig=Always  IsSecret=1
+ *    3    SNwkSIntKey          1.1      WriteConfig=Always  IsSecret=1
+ *    4    NwkSEncKey           1.1      WriteConfig=Always  IsSecret=1
+ *    5    AppSKey              1.0/1.1  WriteConfig=Always  IsSecret=1
+ *    6    JSIntKey             1.1      WriteConfig=Always  IsSecret=1
+ *    7    JSEncKey             1.1      WriteConfig=Always  IsSecret=1
+ *    8    Custom credential 1  user     WriteConfig=Always  IsSecret=1
+ *    9    Custom credential 2  user     WriteConfig=Always  IsSecret=1
+ *   10    Custom credential 3  user     WriteConfig=Always  IsSecret=1
+ *   11    Custom credential 4  user     WriteConfig=Always  IsSecret=1
+ *   12    IO Protection Key    bus      WriteConfig=Never   IsSecret=1
+ *   13    Reserved             --       WriteConfig=Never   IsSecret=0
+ *   14    Reserved             --       WriteConfig=Never   IsSecret=0
+ *   15    Device ID / serial   --       WriteConfig=Never   IsSecret=0
+ *
+ * Root keys (0-1): sealed at provisioning, never writable again.
+ * Session keys (2-7): written by firmware after OTAA join.
+ * Custom (8-11): available for MQTT/TLS-PSK/cloud credentials.
+ * IO Protection (12): transport encryption for I2C bus.
+ * Reserved (13-14): locked empty for future use.
+ * Device ID (15): non-secret, readable identifier.
+ * --------------------------------------------------------------------- */
+
 /*
- * Slot 0 (AppKey) SlotConfig: IsSecret=1, WriteConfig=Never(0x2), WriteKey=0
+ * Slot 0-1 (AppKey, NwkKey) SlotConfig:
+ *   IsSecret=1, WriteConfig=Never(0x2), WriteKey=0
  *   Low byte  = 0x80  (IsSecret=1, all others 0)
  *   High byte = 0x20  (WriteConfig=0x2 in [7:4], WriteKey=0 in [3:0])
  */
-#define SLOTCFG_APPKEY_LO   0x80u
-#define SLOTCFG_APPKEY_HI   0x20u
+#define SLOTCFG_ROOTKEY_LO  0x80u
+#define SLOTCFG_ROOTKEY_HI  0x20u
 
 /*
- * Slot 1/2 (NwkSKey / AppSKey) SlotConfig:
- *   IsSecret=1, WriteConfig=Encrypt(0x3), WriteKey=3 (auth key slot)
- *   Low byte  = 0x80
- *   High byte = 0x33  (WriteConfig=0x3 in [7:4], WriteKey=3 in [3:0])
+ * Slots 2-7 (session keys) SlotConfig:
+ *   IsSecret=1, WriteConfig=Always(0x0), WriteKey=0
+ *   Low byte  = 0x80  (IsSecret=1)
+ *   High byte = 0x00  (WriteConfig=0x0 in [7:4], WriteKey=0 in [3:0])
  */
 #define SLOTCFG_SESSKEY_LO  0x80u
-#define SLOTCFG_SESSKEY_HI  0x33u
+#define SLOTCFG_SESSKEY_HI  0x00u
 
 /*
- * Slot 3 (Auth key) SlotConfig: IsSecret=1, WriteConfig=Never, WriteKey=0
- *   Same encoding as AppKey.
+ * Slots 8-11 (custom credentials) SlotConfig:
+ *   IsSecret=1, WriteConfig=Always(0x0), WriteKey=0
+ *   Same encoding as session keys.
  */
-#define SLOTCFG_AUTHKEY_LO  0x80u
-#define SLOTCFG_AUTHKEY_HI  0x20u
+#define SLOTCFG_CUSTOM_LO   0x80u
+#define SLOTCFG_CUSTOM_HI   0x00u
 
 /*
- * Slots 4-15 (Reserved) SlotConfig: IsSecret=0, WriteConfig=Never, WriteKey=0
- *   Low byte  = 0x00
- *   High byte = 0x20
+ * Slot 12 (IO Protection Key) SlotConfig:
+ *   IsSecret=1, WriteConfig=Never(0x2), WriteKey=0
+ *   Same encoding as root keys.
  */
-#define SLOTCFG_UNUSED_LO   0x00u
-#define SLOTCFG_UNUSED_HI   0x20u
+#define SLOTCFG_IOPROT_LO   0x80u
+#define SLOTCFG_IOPROT_HI   0x20u
 
 /*
- * KeyConfig for AES-128 key slots (slots 0-3):
+ * Slots 13-14 (Reserved) SlotConfig:
+ *   IsSecret=0, WriteConfig=Never(0x2), WriteKey=0
+ */
+#define SLOTCFG_RESERVED_LO 0x00u
+#define SLOTCFG_RESERVED_HI 0x20u
+
+/*
+ * Slot 15 (Device ID) SlotConfig:
+ *   IsSecret=0, WriteConfig=Never(0x2), WriteKey=0
+ *   Readable by anyone, written once during provisioning.
+ */
+#define SLOTCFG_DEVID_LO    0x00u
+#define SLOTCFG_DEVID_HI    0x20u
+
+/*
+ * KeyConfig for AES-128 key slots (slots 0-12):
  *   Private=0, PubInfo=0, KeyType=6(AES), Lockable=1, ReqRandom=0, ReqAuth=0
  *   Low byte  = (1<<5) | (6<<2) = 0x20 | 0x18 = 0x38
  *   High byte = 0x00
@@ -165,13 +232,13 @@ static atecc608c_t dev;
 #define KEYCFG_AES_HI       0x00u
 
 /*
- * KeyConfig for unused slots (4-15):
+ * KeyConfig for non-AES slots (13-15):
  *   KeyType=7 (SHA/HMAC, generic), Lockable=1
  *   Low byte  = (1<<5) | (7<<2) = 0x20 | 0x1C = 0x3Cu
  *   High byte = 0x00
  */
-#define KEYCFG_UNUSED_LO    0x3Cu
-#define KEYCFG_UNUSED_HI    0x00u
+#define KEYCFG_OTHER_LO     0x3Cu
+#define KEYCFG_OTHER_HI     0x00u
 
 /*
  * The full template for bytes 16..127 (112 bytes).
@@ -190,38 +257,38 @@ static const uint8_t k_template_16_83[68] = {
 	/* Byte 18 */ 0xAAu,              /* OTPmode: consumption mode (standard) */
 	/* Byte 19 */ 0x00u,              /* ChipMode: default */
 
-	/* Bytes 20-21: SlotConfig[0]  AppKey  (write-once, never readable) */
-	SLOTCFG_APPKEY_LO,  SLOTCFG_APPKEY_HI,
-	/* Bytes 22-23: SlotConfig[1]  NwkSKey (encrypted write via slot 3) */
-	SLOTCFG_SESSKEY_LO, SLOTCFG_SESSKEY_HI,
-	/* Bytes 24-25: SlotConfig[2]  AppSKey (encrypted write via slot 3) */
-	SLOTCFG_SESSKEY_LO, SLOTCFG_SESSKEY_HI,
-	/* Bytes 26-27: SlotConfig[3]  Auth key (write-once, never readable) */
-	SLOTCFG_AUTHKEY_LO, SLOTCFG_AUTHKEY_HI,
-	/* Bytes 28-29: SlotConfig[4]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 30-31: SlotConfig[5]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 32-33: SlotConfig[6]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 34-35: SlotConfig[7]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 36-37: SlotConfig[8]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 38-39: SlotConfig[9]  Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 40-41: SlotConfig[10] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 42-43: SlotConfig[11] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 44-45: SlotConfig[12] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
+	/* Bytes 20-21: SlotConfig[0]  AppKey  (sealed root key) */
+	SLOTCFG_ROOTKEY_LO,  SLOTCFG_ROOTKEY_HI,
+	/* Bytes 22-23: SlotConfig[1]  NwkKey  (sealed root key, 1.1 only) */
+	SLOTCFG_ROOTKEY_LO,  SLOTCFG_ROOTKEY_HI,
+	/* Bytes 24-25: SlotConfig[2]  NwkSKey / FNwkSIntKey (session) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 26-27: SlotConfig[3]  SNwkSIntKey (session, 1.1 only) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 28-29: SlotConfig[4]  NwkSEncKey (session, 1.1 only) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 30-31: SlotConfig[5]  AppSKey (session) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 32-33: SlotConfig[6]  JSIntKey (session, 1.1 only) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 34-35: SlotConfig[7]  JSEncKey (session, 1.1 only) */
+	SLOTCFG_SESSKEY_LO,  SLOTCFG_SESSKEY_HI,
+	/* Bytes 36-37: SlotConfig[8]  Custom credential 1 */
+	SLOTCFG_CUSTOM_LO,   SLOTCFG_CUSTOM_HI,
+	/* Bytes 38-39: SlotConfig[9]  Custom credential 2 */
+	SLOTCFG_CUSTOM_LO,   SLOTCFG_CUSTOM_HI,
+	/* Bytes 40-41: SlotConfig[10] Custom credential 3 */
+	SLOTCFG_CUSTOM_LO,   SLOTCFG_CUSTOM_HI,
+	/* Bytes 42-43: SlotConfig[11] Custom credential 4 */
+	SLOTCFG_CUSTOM_LO,   SLOTCFG_CUSTOM_HI,
+	/* Bytes 44-45: SlotConfig[12] IO Protection Key */
+	SLOTCFG_IOPROT_LO,   SLOTCFG_IOPROT_HI,
 	/* Bytes 46-47: SlotConfig[13] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
+	SLOTCFG_RESERVED_LO, SLOTCFG_RESERVED_HI,
 	/* Bytes 48-49: SlotConfig[14] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
-	/* Bytes 50-51: SlotConfig[15] Reserved */
-	SLOTCFG_UNUSED_LO,  SLOTCFG_UNUSED_HI,
+	SLOTCFG_RESERVED_LO, SLOTCFG_RESERVED_HI,
+	/* Bytes 50-51: SlotConfig[15] Device ID */
+	SLOTCFG_DEVID_LO,    SLOTCFG_DEVID_HI,
 
 	/* Bytes 52-59: Counter[0] -- monotonic counter, initialised to 0 */
 	0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
@@ -234,43 +301,59 @@ static const uint8_t k_template_16_83[68] = {
 	0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
 };
 
-/* Bytes 92..127 (skipping 84..91 which contain lock bytes). */
+/*
+ * Bytes 88..91 (SlotLocked + ChipOptions).
+ *
+ * SlotLocked (bytes 88-89): 0xFF, 0xFF = all slots individually unlocked
+ * (factory default -- individual slot locking is not used in this design).
+ *
+ * ChipOptions (bytes 90-91):
+ *   Byte 90 bit [4] AESEnable     = 1  (required for AES command)
+ *   Byte 90 bit [2] IOProtKeyEnable = 0  (not active yet, enable in firmware)
+ *   Byte 91 bits [3:0] IOProtKey  = 12 (slot 12 holds the IO Protection Key)
+ */
+static const uint8_t k_template_88_91[4] = {
+	0xFFu, 0xFFu,       /* SlotLocked: all unlocked */
+	0x10u, 0x0Cu,       /* ChipOptions: AESEnable=1, IOProtKey=slot 12 */
+};
+
+/* Bytes 92..127 (skipping only 84..87 which contain lock bytes). */
 static const uint8_t k_template_92_127[36] = {
 	/* Bytes 92-95: X509format -- not used, all zeros */
 	0x00u, 0x00u, 0x00u, 0x00u,
 
 	/* Bytes 96-97:   KeyConfig[0]  AppKey  (AES-128) */
-	KEYCFG_AES_LO,    KEYCFG_AES_HI,
-	/* Bytes 98-99:   KeyConfig[1]  NwkSKey (AES-128) */
-	KEYCFG_AES_LO,    KEYCFG_AES_HI,
-	/* Bytes 100-101: KeyConfig[2]  AppSKey (AES-128) */
-	KEYCFG_AES_LO,    KEYCFG_AES_HI,
-	/* Bytes 102-103: KeyConfig[3]  Auth key (AES-128) */
-	KEYCFG_AES_LO,    KEYCFG_AES_HI,
-	/* Bytes 104-105: KeyConfig[4]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 106-107: KeyConfig[5]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 108-109: KeyConfig[6]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 110-111: KeyConfig[7]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 112-113: KeyConfig[8]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 114-115: KeyConfig[9]  Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 116-117: KeyConfig[10] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 118-119: KeyConfig[11] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 120-121: KeyConfig[12] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 98-99:   KeyConfig[1]  NwkKey  (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 100-101: KeyConfig[2]  NwkSKey / FNwkSIntKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 102-103: KeyConfig[3]  SNwkSIntKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 104-105: KeyConfig[4]  NwkSEncKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 106-107: KeyConfig[5]  AppSKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 108-109: KeyConfig[6]  JSIntKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 110-111: KeyConfig[7]  JSEncKey (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 112-113: KeyConfig[8]  Custom credential 1 (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 114-115: KeyConfig[9]  Custom credential 2 (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 116-117: KeyConfig[10] Custom credential 3 (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 118-119: KeyConfig[11] Custom credential 4 (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
+	/* Bytes 120-121: KeyConfig[12] IO Protection Key (AES-128) */
+	KEYCFG_AES_LO,   KEYCFG_AES_HI,
 	/* Bytes 122-123: KeyConfig[13] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
+	KEYCFG_OTHER_LO,  KEYCFG_OTHER_HI,
 	/* Bytes 124-125: KeyConfig[14] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
-	/* Bytes 126-127: KeyConfig[15] Reserved */
-	KEYCFG_UNUSED_LO, KEYCFG_UNUSED_HI,
+	KEYCFG_OTHER_LO,  KEYCFG_OTHER_HI,
+	/* Bytes 126-127: KeyConfig[15] Device ID */
+	KEYCFG_OTHER_LO,  KEYCFG_OTHER_HI,
 };
 
 /* ---- Utility helpers ----------------------------------------------------- */
@@ -444,7 +527,25 @@ static bool step_write_template(void)
 		Serial.print('.');
 		}
 
-	/* Region B: bytes 92..127 (skip 84..91) */
+	/* Region B: bytes 88..91 (SlotLocked + ChipOptions) */
+		{
+		uint8_t wake_resp[4];
+		if (!atecc608c_wake(&dev, wake_resp))
+			{
+			Serial.println(F("ERROR: wake failed before writing byte 88"));
+			return false;
+			}
+		if (!atecc608c_write_config_word(&dev, 88u, k_template_88_91))
+			{
+			atecc608c_sleep(&dev);
+			Serial.println(F("ERROR: write failed at byte offset 88"));
+			return false;
+			}
+		atecc608c_sleep(&dev);
+		Serial.print('.');
+		}
+
+	/* Region C: bytes 92..127 (skip only 84..87 lock bytes) */
 	for (uint8_t offset = 92u; offset < 128u; offset += 4u)
 		{
 		const uint8_t *word = &k_template_92_127[offset - 92u];
@@ -478,8 +579,8 @@ static bool step_write_template(void)
  * Step 3: Read the config zone back and verify it matches the template.
  *
  * Bytes 0..15 are factory bytes (cannot be written -- not checked against
- * template).  Bytes 84..91 were not written and are not verified.
- * All other bytes must match exactly.
+ * template).  Bytes 84..87 (lock bytes) were not written and are not
+ * verified.  All other bytes must match exactly.
  *
  * Returns false if any mismatch is found.
  */
@@ -506,7 +607,24 @@ static bool step_verify(const uint8_t cfg[128])
 			}
 		}
 
-	/* Check region B: bytes 92..127 */
+	/* Check region B: bytes 88..91 */
+	for (uint8_t i = 0; i < 4u; ++i)
+		{
+		uint8_t offset = 88u + i;
+		if (cfg[offset] != k_template_88_91[i])
+			{
+			Serial.print(F("  MISMATCH at byte "));
+			Serial.print(offset);
+			Serial.print(F(":  expected 0x"));
+			printHex(k_template_88_91[i]);
+			Serial.print(F("  got 0x"));
+			printHex(cfg[offset]);
+			Serial.println();
+			ok = false;
+			}
+		}
+
+	/* Check region C: bytes 92..127 */
 	for (uint8_t i = 0; i < 36u; ++i)
 		{
 		uint8_t offset = 92u + i;
