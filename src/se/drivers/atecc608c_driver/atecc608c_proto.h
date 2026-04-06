@@ -236,6 +236,33 @@ bool atecc608c_aes_ecb_encrypt(atecc608c_t *dev, uint8_t slot,
  */
 bool atecc608c_lock_data_zone(atecc608c_t *dev);
 
+/*
+ * Read a monotonic counter without incrementing it.
+ *
+ * counter_id  0 or 1 (the ATECC608C has two 32-bit counters).
+ * value       Output: current counter value.
+ *
+ * The counters are initialised to 0 during config zone provisioning
+ * (bytes 52-59 for Counter[0], 60-67 for Counter[1]).  They persist
+ * across power cycles and can only be incremented, never decremented
+ * or reset.
+ *
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_counter_read(atecc608c_t *dev, uint8_t counter_id,
+                             uint32_t *value);
+
+/*
+ * Increment a monotonic counter and return the new value.
+ *
+ * counter_id  0 or 1.
+ * value       Output: counter value after incrementing.
+ *
+ * The chip must be awake.  Returns true on success.
+ */
+bool atecc608c_counter_increment(atecc608c_t *dev, uint8_t counter_id,
+                                  uint32_t *value);
+
 #ifdef __cplusplus
 }
 #endif

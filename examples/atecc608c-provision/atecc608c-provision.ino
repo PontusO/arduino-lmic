@@ -290,10 +290,15 @@ static const uint8_t k_template_16_83[68] = {
 	/* Bytes 50-51: SlotConfig[15] Device ID */
 	SLOTCFG_DEVID_LO,    SLOTCFG_DEVID_HI,
 
-	/* Bytes 52-59: Counter[0] -- monotonic counter, initialised to 0 */
-	0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+	/* Bytes 52-59: Counter[0] -- monotonic counter, initialised to 0.
+	 * The ATECC608C uses a special encoding: the first 4 bytes are a
+	 * linear counter (bits flip 1→0 on each increment) and the last
+	 * 4 bytes are a binary overflow counter.  Value 0 = FF FF FF FF
+	 * 00 00 00 00.  All-zeros is an INVALID state that causes the
+	 * Counter command to return execution error (0x0F). */
+	0xFFu, 0xFFu, 0xFFu, 0xFFu, 0x00u, 0x00u, 0x00u, 0x00u,
 	/* Bytes 60-67: Counter[1] -- monotonic counter, initialised to 0 */
-	0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+	0xFFu, 0xFFu, 0xFFu, 0xFFu, 0x00u, 0x00u, 0x00u, 0x00u,
 
 	/* Bytes 68-83: UseLock, VolatileKeyPermission, SecureBoot,
 	 *              KdfIvLoc, KdfIvStr, Reserved -- all default 0 */

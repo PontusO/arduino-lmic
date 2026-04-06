@@ -829,3 +829,71 @@ bool atecc608c_lock_data_zone(atecc608c_t *dev)
 
     return (rx[0] == 4u && rx[1] == 0x00u);
 }
+
+/*
+ * atecc608c_counter_read / atecc608c_counter_increment
+ *
+ * Counter command (opcode 0x24).
+ *   Mode 0x00 = read without incrementing.
+ *   Mode 0x01 = increment and return new value.
+ *   Param2 = counter ID (0 or 1), little-endian.
+ *
+ * Response (7 bytes): [count=0x07, value[4] (LE), crc_lo, crc_hi]
+ */
+static bool atecc608c_counter_cmd(atecc608c_t *dev, uint8_t mode,
+                                   uint8_t counter_id, uint32_t *value)
+{
+    if (!dev || !dev->initialized || !value || counter_id > 1u) {
+        return false;
+    }
+
+    uint8_t tx[8];
+    tx[0] = 0x03u;         /* word address: command */
+    tx[1] = 0x07u;         /* count */
+    tx[2] = 0x24u;         /* opcode: Counter */
+    tx[3] = mode;          /* 0x00=read, 0x01=increment */
+    tx[4] = counter_id;    /* param2 lo */
+    tx[5] = 0x00u;         /* param2 hi */
+    uint16_t crc = atecc608c_crc16(&tx[1], 5u);
+    tx[6] = (uint8_t)(crc & 0xFFu);
+    tx[7] = (uint8_t)(crc >> 8);
+
+    if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        return false;
+    }
+
+    delay(20); /* tEXEC for Counter: ~20 ms max */
+
+    uint8_t rx[7];
+    if (!atecc608c_hal_read(&dev->hal, rx, sizeof(rx))) {
+        return false;
+    }
+
+    if (rx[0] != 7u) {
+        return false;
+    }
+
+    uint16_t rx_crc_calc = atecc608c_crc16(rx, 5u);
+    uint16_t rx_crc_recv = (uint16_t)rx[5] | ((uint16_t)rx[6] << 8);
+    if (rx_crc_calc != rx_crc_recv) {
+        return false;
+    }
+
+    *value = (uint32_t)rx[1]         |
+             ((uint32_t)rx[2] << 8)  |
+             ((uint32_t)rx[3] << 16) |
+             ((uint32_t)rx[4] << 24);
+    return true;
+}
+
+bool atecc608c_counter_read(atecc608c_t *dev, uint8_t counter_id,
+                             uint32_t *value)
+{
+    return atecc608c_counter_cmd(dev, 0x00u, counter_id, value);
+}
+
+bool atecc608c_counter_increment(atecc608c_t *dev, uint8_t counter_id,
+                                  uint32_t *value)
+{
+    return atecc608c_counter_cmd(dev, 0x01u, counter_id, value);
+}
