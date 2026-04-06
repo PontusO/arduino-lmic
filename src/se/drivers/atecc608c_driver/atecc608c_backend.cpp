@@ -633,8 +633,11 @@ static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
 		atecc608c_sleep(dev);
 	}
 
-	/* Force a sleep/wake cycle to flush the chip's internal key cache
-	 * so the AES engine picks up the newly written keys. */
+	/* The ATECC608C's AES engine may cache slot contents internally.
+	 * After EEPROM writes, allow time for the write to complete, then
+	 * force a sleep/wake cycle to flush the cache so the AES engine
+	 * picks up the newly written keys. */
+	delay(10);
 	if (atecc608c_wake(dev, wake_resp)) {
 		atecc608c_sleep(dev);
 	}
