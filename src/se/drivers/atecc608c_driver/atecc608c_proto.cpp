@@ -13,6 +13,15 @@
 
 #include "atecc608c_proto.h"
 
+/* Secure memset that the compiler cannot optimise away. */
+static void secure_zero(void *p, size_t n)
+{
+    volatile uint8_t *v = (volatile uint8_t *)p;
+    while (n--) {
+        *v++ = 0;
+    }
+}
+
 static bool atecc608c_expect_wake_response(const uint8_t *buf, size_t len)
 {
     if (!buf || len < 4) {
@@ -667,8 +676,11 @@ bool atecc608c_write_data_slot(atecc608c_t *dev, uint8_t slot,
     tx[39] = (uint8_t)(crc >> 8);
 
     if (!atecc608c_hal_write(&dev->hal, tx, sizeof(tx))) {
+        secure_zero(tx, sizeof(tx));
         return false;
     }
+
+    secure_zero(tx, sizeof(tx)); /* scrub key material from stack */
 
     delay(26); /* tEXEC for Write: ~26 ms max */
 
@@ -778,6 +790,7 @@ bool atecc608c_aes_ecb_encrypt(atecc608c_t *dev, uint8_t slot,
     }
 
     memcpy(output, &rx[1], 16u);
+    secure_zero(rx, sizeof(rx));  /* scrub AES output from stack */
     return true;
 }
 

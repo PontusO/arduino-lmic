@@ -24,6 +24,18 @@
 #include <string.h>
 
 /*
+ * Secure memset that the compiler cannot optimise away.
+ * Used to scrub key material from stack buffers.
+ */
+static void secure_zero(void *p, size_t n)
+{
+	volatile uint8_t *v = (volatile uint8_t *)p;
+	while (n--) {
+		*v++ = 0;
+	}
+}
+
+/*
  * Pull in LMIC's AES engine (os_aes, AESkey, AESaux) and helpers.
  * Used for session-key crypto (NwkSKey / AppSKey operations on data frames).
  */
@@ -579,9 +591,13 @@ static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
 
 	/* Encrypt each template with AppKey via chip */
 	if (!chip_ecb(ctx, nwkkey, nwkkey)) {
+		secure_zero(nwkkey, sizeof(nwkkey));
+		secure_zero(artkey, sizeof(artkey));
 		return false;
 	}
 	if (!chip_ecb(ctx, artkey, artkey)) {
+		secure_zero(nwkkey, sizeof(nwkkey));
+		secure_zero(artkey, sizeof(artkey));
 		return false;
 	}
 
@@ -623,10 +639,12 @@ static bool backend_sessKeys(atecc608c_backend_ctx_t *ctx, u2_t devnonce,
 		atecc608c_sleep(dev);
 	}
 
-	/* Scrub session keys from RAM -- they live on the chip now. */
-	memset(nwkkey, 0, sizeof(nwkkey));
-	memset(artkey, 0, sizeof(artkey));
-	memset(block, 0, sizeof(block));
+	/* Scrub session keys from RAM -- they live on the chip now.
+	 * Use secure_zero to prevent the compiler from optimising away
+	 * these stores as dead writes. */
+	secure_zero(nwkkey, sizeof(nwkkey));
+	secure_zero(artkey, sizeof(artkey));
+	secure_zero(block, sizeof(block));
 
 	ctx->nwkskey_present[0] = true;
 	ctx->appskey_present[0] = true;
