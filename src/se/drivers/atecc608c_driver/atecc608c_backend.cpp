@@ -429,13 +429,13 @@ static bool chip_aes_cmac_b0(atecc608c_backend_ctx_t *ctx, uint8_t slot,
 	}
 
 	/* Build B0 block and process it as the first CMAC block */
-	uint8_t B0[16];
-	memset(B0, 0, 16);
-	B0[0]  = 0x49;
-	B0[5]  = dndir ? 1 : 0;
-	os_wlsbf4(B0 + 6,  devaddr);
-	os_wlsbf4(B0 + 10, seqno);
-	B0[15] = (uint8_t)len;
+	uint8_t B0_block[16];
+	memset(B0_block, 0, 16);
+	B0_block[0]  = 0x49;
+	B0_block[5]  = dndir ? 1 : 0;
+	os_wlsbf4(B0_block + 6,  devaddr);
+	os_wlsbf4(B0_block + 10, seqno);
+	B0_block[15] = (uint8_t)len;
 
 	/* Total CMAC input length: 16 (B0) + len (PDU) */
 	int total = 16 + len;
@@ -445,7 +445,7 @@ static bool chip_aes_cmac_b0(atecc608c_backend_ctx_t *ctx, uint8_t slot,
 	/* Block 0 = B0 */
 	memset(X, 0, 16);
 	for (uint8_t j = 0u; j < 16u; ++j) {
-		X[j] ^= B0[j];
+		X[j] ^= B0_block[j];
 	}
 	if (!chip_ecb_slot(ctx, slot, X, X)) {
 		return false;
