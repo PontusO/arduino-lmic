@@ -51,6 +51,10 @@ function _lmic_filter {
 			"avr:compliance-otaa-halconfig.ino")
 				return 1
 				;;
+			# atecc608c-otaa pulls in the SE driver + Wire and exceeds flash on AVR
+			"avr:atecc608c-otaa.ino")
+				return 1
+				;;
 			*)
 				return 0
 				;;
