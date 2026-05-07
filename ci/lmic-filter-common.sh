@@ -55,6 +55,13 @@ function _lmic_filter {
 			"avr:atecc608c-otaa.ino")
 				return 1
 				;;
+			# these sketches exceed flash on AVR (feather32u4) for the
+			# heavier regions (eu868, as923, as923jp); skip on AVR entirely
+			"avr:ttn-abp.ino" | \
+			"avr:ttn-abp-sleep.ino" | \
+			"avr:helium-otaa.ino")
+				return 1
+				;;
 			*)
 				return 0
 				;;
