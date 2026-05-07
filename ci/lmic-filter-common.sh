@@ -55,12 +55,33 @@ function _lmic_filter {
 			"avr:atecc608c-otaa.ino")
 				return 1
 				;;
-			# these sketches exceed flash on AVR (feather32u4) for the
-			# heavier regions (eu868, as923, as923jp); skip on AVR entirely
-			"avr:ttn-abp.ino" | \
-			"avr:ttn-abp-sleep.ino" | \
+			# Sketches that fit on AVR for the smaller regions (us915,
+			# au915, kr920, in866) but overflow flash for the heavier
+			# bandplans (eu868 and the AS923 family). Skip per-region so
+			# the smaller-region builds still run on AVR.
+			# MCCI_REGION is set by the wrap script before this filter
+			# is called and is visible here without export because bash
+			# functions share the caller's scope.
+			"avr:ttn-otaa.ino" | \
+			"avr:ttn-abp-sleep.ino")
+				case "$MCCI_REGION" in
+					eu868|as923|as923jp) return 1 ;;
+				esac
+				;;
+			"avr:ttn-abp.ino")
+				case "$MCCI_REGION" in
+					eu868) return 1 ;;
+				esac
+				;;
 			"avr:helium-otaa.ino")
-				return 1
+				case "$MCCI_REGION" in
+					eu868|as923|as923jp) return 1 ;;
+				esac
+				;;
+			"avr:ttn-otaa-feather-us915-dht22.ino")
+				case "$MCCI_REGION" in
+					au915) return 1 ;;
+				esac
 				;;
 			*)
 				return 0
