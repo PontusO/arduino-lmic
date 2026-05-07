@@ -47,10 +47,9 @@ function _lmic_filter {
 			"stm32:ttn-otaa-feather-us915.ino")
 				return 1
 				;;
-			# compliance-otaa-halconfig exceeds flash on AVR (feather32u4)
-			"avr:compliance-otaa-halconfig.ino")
-				return 1
-				;;
+			# AVR (feather32u4) was dropped from the matrix; Mega 2560
+			# has its own separate job (see ci/build-avr-mega2560.sh)
+			# and doesn't go through this filter.
 			*)
 				return 0
 				;;
