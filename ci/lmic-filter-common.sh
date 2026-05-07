@@ -47,42 +47,9 @@ function _lmic_filter {
 			"stm32:ttn-otaa-feather-us915.ino")
 				return 1
 				;;
-			# compliance-otaa-halconfig exceeds flash on AVR (feather32u4)
-			"avr:compliance-otaa-halconfig.ino")
-				return 1
-				;;
-			# atecc608c-otaa pulls in the SE driver + Wire and exceeds flash on AVR
-			"avr:atecc608c-otaa.ino")
-				return 1
-				;;
-			# Sketches that fit on AVR for the smaller regions (us915,
-			# au915, kr920, in866) but overflow flash for the heavier
-			# bandplans (eu868 and the AS923 family). Skip per-region so
-			# the smaller-region builds still run on AVR.
-			# MCCI_REGION is set by the wrap script before this filter
-			# is called and is visible here without export because bash
-			# functions share the caller's scope.
-			"avr:ttn-otaa.ino" | \
-			"avr:ttn-abp-sleep.ino")
-				case "$MCCI_REGION" in
-					eu868|as923|as923jp) return 1 ;;
-				esac
-				;;
-			"avr:ttn-abp.ino")
-				case "$MCCI_REGION" in
-					eu868) return 1 ;;
-				esac
-				;;
-			"avr:helium-otaa.ino")
-				case "$MCCI_REGION" in
-					eu868|as923|as923jp) return 1 ;;
-				esac
-				;;
-			"avr:ttn-otaa-feather-us915-dht22.ino")
-				case "$MCCI_REGION" in
-					au915) return 1 ;;
-				esac
-				;;
+			# AVR (feather32u4) was dropped from the matrix; Mega 2560
+			# has its own separate job (see ci/build-avr-mega2560.sh)
+			# and doesn't go through this filter.
 			*)
 				return 0
 				;;
