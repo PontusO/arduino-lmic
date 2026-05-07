@@ -118,9 +118,7 @@ jobs:
           path: libraries/Time
 
       - name: Install arduino-cli
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/.local/bin" sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        uses: arduino/setup-arduino-cli@v2
 
       - name: Install arduino:avr core
         run: |
