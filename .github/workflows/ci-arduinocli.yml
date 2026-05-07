@@ -88,7 +88,8 @@ jobs:
 
   # define a job for the AVR Mega 2560 build. Upstream's wrap script
   # hardcodes feather32u4 for the AVR matrix entry, so we drive
-  # arduino-cli directly to target the Mega 2560 (256 KB flash).
+  # arduino-cli directly via ci/build-direct.sh to target the Mega
+  # 2560 (256 KB flash).
   arduinocli_avr_mega:
     runs-on: ubuntu-latest
     name: avr-mega2560
@@ -126,6 +127,51 @@ jobs:
           arduino-cli core install arduino:avr
 
       - name: Compile examples for Mega 2560
-        run: bash libraries/${{ env.MCCI_CI_LIBRARY }}/ci/build-avr-mega2560.sh libraries/${{ env.MCCI_CI_LIBRARY }}
+        run: bash libraries/${{ env.MCCI_CI_LIBRARY }}/ci/build-direct.sh "arduino:avr:mega:cpu=atmega2560" libraries/${{ env.MCCI_CI_LIBRARY }}
+
+  # define a job for the RP2350 (Raspberry Pi Pico 2) build, using the
+  # earlephilhower/arduino-pico core. Same pattern as the Mega 2560 job
+  # above -- bypasses the upstream wrap script and drives arduino-cli
+  # directly via ci/build-direct.sh.
+  arduinocli_rp2350:
+    runs-on: ubuntu-latest
+    name: rp2350
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Check out the repo
+        with:
+          path: libraries/${{ env.MCCI_CI_LIBRARY }}
+
+      - name: "Get library: Adafruit_Sensor"
+        uses: actions/checkout@v4
+        with:
+          repository: adafruit/Adafruit_Sensor
+          path: libraries/Adafruit_Sensor
+
+      - name: "Get library: DHT-sensor-library"
+        uses: actions/checkout@v4
+        with:
+          repository: adafruit/DHT-sensor-library
+          path: libraries/DHT-sensor-library
+
+      - name: "Get library: Time"
+        uses: actions/checkout@v4
+        with:
+          repository: PaulStoffregen/Time
+          path: libraries/Time
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install rp2040:rp2040 core (earlephilhower/arduino-pico)
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+
+      - name: Compile examples for RP2350 (Pico 2)
+        run: bash libraries/${{ env.MCCI_CI_LIBRARY }}/ci/build-direct.sh "rp2040:rp2040:rpipico2" libraries/${{ env.MCCI_CI_LIBRARY }}
 
 ### end of file ###
