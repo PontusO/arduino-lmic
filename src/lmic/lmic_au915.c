@@ -72,7 +72,7 @@ static CONST_TABLE(u1_t, maxFrameLens_dwell1)[] = {
         61+5, 137+5, 250+5, 250+5, 250+5, 250+5 };
 
 static bit_t
-LMICau915_getUplinkDwellBit() {
+LMICau915_getUplinkDwellBit(void) {
         // if uninitialized, return default.
         if (LMIC.txParam == 0xFF) {
                 return AU915_INITIAL_TxParam_UplinkDwellTime;
@@ -273,7 +273,7 @@ void LMICau915_updateTx(ostime_t txbeg) {
                 ostime_t airtime = calcAirTime(LMIC.rps, LMIC.dataLen);
                 globalDutyDelay = txbeg + (airtime << LMIC.globalDutyRate);
         }
-        if (LMICau915_getUplinkDwellBit(LMIC.txParam)) {
+        if (LMICau915_getUplinkDwellBit()) {
                 dwellDelay = AU915_UPLINK_DWELL_TIME_osticks;
         }
         if (dwellDelay > globalDutyDelay) {
