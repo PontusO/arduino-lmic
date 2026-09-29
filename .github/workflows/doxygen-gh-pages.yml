@@ -25,6 +25,9 @@ permissions:
 
 jobs:
   build-and-deploy:
+    # GitHub Pages is enabled only on the upstream repository; forks
+    # without Pages fail at configure-pages, so skip the job there.
+    if: github.repository == 'mcci-catena/arduino-lmic'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
