@@ -15,7 +15,7 @@ Author:
 */
 
 // Make sure only to compiler when the appropriate board is enabled
-#if defined(ARDUINO_CHALLENGERZP_2350_LORA_RP2350)
+#if defined(ARDUINO_CHALLENGER_ZP_2350_LORA_RP2350)
 
 #include <arduino_lmic_hal_boards.h>
 #include <Arduino.h>

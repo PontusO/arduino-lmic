@@ -43,6 +43,7 @@ vs-readme.txt
 __vm
 .vs
 *.sln
+*.arduino-cli/
 
 # files from vscode
 .vscode
