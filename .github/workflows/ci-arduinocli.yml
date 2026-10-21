@@ -201,22 +201,34 @@ jobs:
       - name: Compile examples for RP2350 (Pico 2)
         run: bash libraries/${{ env.MCCI_CI_LIBRARY }}/ci/build-direct.sh "rp2040:rp2040:rpipico2" libraries/${{ env.MCCI_CI_LIBRARY }}
 
+  # Unit tests of the core, built with the host gcc and run natively; see
+  # test/host/Makefile. A few seconds per region.
+  host-tests:
+    name: host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run for every region
+        run: make -C test/host all-regions
+
   # The one check the branch rulesets require. It passes only when every
-  # matrix job, plus the fork-specific avr-mega2560 and rp2350 jobs,
-  # passed, so the rulesets need not list the job names and the matrix
-  # can change without touching them.
+  # matrix job, the host tests, and the fork-specific avr-mega2560 and
+  # rp2350 jobs passed, so the rulesets need not list the job names and
+  # the matrix can change without touching them.
   result:
     name: Arduino CI result
-    needs: [arduinocli, arduinocli_avr_mega, arduinocli_rp2350]
+    needs: [arduinocli, host-tests, arduinocli_avr_mega, arduinocli_rp2350]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Check the matrix result
+      - name: Check the results
         run: |
           echo "matrix result: ${{ needs.arduinocli.result }}"
-          echo "avr-mega2560 result: ${{ needs.arduinocli_avr_mega.result }}"
-          echo "rp2350 result: ${{ needs.arduinocli_rp2350.result }}"
+          echo "host tests:    ${{ needs.host-tests.result }}"
+          echo "avr-mega2560:  ${{ needs.arduinocli_avr_mega.result }}"
+          echo "rp2350:        ${{ needs.arduinocli_rp2350.result }}"
           test "${{ needs.arduinocli.result }}" = success
+          test "${{ needs.host-tests.result }}" = success
           test "${{ needs.arduinocli_avr_mega.result }}" = success
           test "${{ needs.arduinocli_rp2350.result }}" = success
 

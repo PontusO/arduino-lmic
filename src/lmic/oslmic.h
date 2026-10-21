@@ -117,6 +117,12 @@ void os_init (void);
 int os_init_ex (const void *pPinMap);
 void os_runloop (void);
 void os_runloop_once (void);
+u4_t os_runloop_once_ex (void);
+u4_t os_queryNextJobTicks (void);
+
+//! \brief os_queryNextJobTicks() and os_runloop_once_ex() return this when no
+//! job is scheduled.
+#define OS_NEXT_JOB_NEVER   ((u4_t) 0xFFFFFFFFu)
 u1_t radio_rssi (void);
 void radio_monitor_rssi(ostime_t n, oslmic_radio_rssi_t *pRssi);
 
@@ -128,7 +134,7 @@ void radio_monitor_rssi(ostime_t n, oslmic_radio_rssi_t *pRssi);
 //! platform jitter and latency, as well as the speed of the LMIC when running
 //! on this plaform. It's not used directly; clients call os_getRadioRxRampup(),
 //! which might adaptively vary this based on observed timeouts.
-#define RX_RAMPUP_DEFAULT  (us2osticks(10000))
+#define RX_RAMPUP_DEFAULT  (us2osticksCeil(10000))
 #endif
 
 #ifndef TX_RAMPUP
@@ -249,6 +255,14 @@ u2_t os_rlsbf2 (xref2cu1_t buf);
 #ifndef os_wlsbf2
 //! Write 16-bit quantity into buffer in little endian byte order.
 void os_wlsbf2 (xref2u1_t buf, u2_t value);
+#endif
+#ifndef os_rlsbf8
+//! Read 64-bit quantity from given pointer in little endian byte order.
+uint64_t os_rlsbf8 (xref2cu1_t buf);
+#endif
+#ifndef os_wlsbf8
+//! Write 64-bit quantity into buffer in little endian byte order.
+void os_wlsbf8 (xref2u1_t buf, uint64_t value);
 #endif
 
 //! Get random number (default impl for u2_t).
