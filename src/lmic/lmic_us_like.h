@@ -29,6 +29,12 @@
 #ifndef _lmic_us_like_h_
 # define _lmic_us_like_h_
 
+#ifndef _lmic_env_h_
+# include "lmic_env.h"
+#endif
+
+LMIC_BEGIN_DECLS
+
 // make sure we want US-like code
 #if !CFG_LMIC_US_like
 # error "lmic not configured for us-like bandplan"
@@ -117,5 +123,20 @@ void LMICuslike_restoreAdrState(const lmic_saved_adr_state_t *pStateBuffer);
 
 bit_t LMICuslike_isDataRateFeasible(dr_t dr);
 #define LMICbandplan_isDataRateFeasible(dr) LMICuslike_isDataRateFeasible(dr)
+
+/// \brief write the 72-channel fixed variant of the session state blob.
+///
+/// \param pVariant	the 172 bytes at offset 44 of the blob, already zeroed.
+/// \param now		the time the blob is being saved (unused for fixed channels).
+void LMICuslike_saveChannelState(u1_t *pVariant, ostime_t now);
+#define LMICbandplan_saveChannelState(p, now)	LMICuslike_saveChannelState(p, now)
+
+/// \brief apply the 72-channel fixed variant of a session state blob.
+///
+/// \return zero, changing nothing, if the variant is not the 72-channel fixed kind.
+bit_t LMICuslike_restoreChannelState(const u1_t *pVariant, ostime_t now, u1_t version);
+#define LMICbandplan_restoreChannelState(p, now, v)	LMICuslike_restoreChannelState(p, now, v)
+
+LMIC_END_DECLS
 
 #endif // _lmic_us_like_h_

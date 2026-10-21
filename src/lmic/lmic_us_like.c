@@ -29,6 +29,7 @@
 #define LMIC_DR_LEGACY 0
 
 #include "lmic_bandplan.h"
+#include "lmic_session_state.h"
 
 #if CFG_LMIC_US_like
 
@@ -68,8 +69,8 @@ static void setNextChannel(uint16_t start, uint16_t end, uint16_t count) {
 
 
 
-bit_t LMIC_setupBand(u1_t bandidx, s1_t txpow, u2_t txcap) {
-        LMIC_API_PARAMETER(bandidx);
+bit_t LMIC_setupChannelGroup(u1_t group, s1_t txpow, u2_t txcap) {
+        LMIC_API_PARAMETER(group);
         LMIC_API_PARAMETER(txpow);
         LMIC_API_PARAMETER(txcap);
 
@@ -372,6 +373,82 @@ void LMICuslike_restoreAdrState(const lmic_saved_adr_state_t *pStateBuffer) {
 
 bit_t LMICuslike_compareAdrState(const lmic_saved_adr_state_t *pStateBuffer) {
         return memcmp(pStateBuffer->channelMap, LMIC.channelMap, sizeof(LMIC.channelMap)) != 0;
+}
+
+//
+// Channel query
+//
+
+u1_t LMIC_queryChannelCount(void) {
+        return 72;
+}
+
+bit_t LMIC_queryChannel(u1_t channel, lmic_channel_info_t *pInfo) {
+        if (channel >= 72 || pInfo == NULL)
+                return 0;
+
+        pInfo->uplinkFreq = LMICbandplan_queryChannelUplinkFreq(channel);
+        pInfo->downlinkFreq = LMICbandplan_queryChannelDownlinkFreq(channel);
+        pInfo->group = LMIC_CHANNEL_NO_GROUP;
+        pInfo->enabled = ENABLED_CHANNEL(channel);
+        pInfo->isDefault = 1;
+
+        if (IS_CHANNEL_125khz(channel)) {
+                pInfo->drMap = DR_RANGE_MAP(LORAWAN_DR0, LMICuslike_getFirst500kHzDR() - 1);
+                pInfo->bandwidth = LMIC_CHANNEL_BW_125kHz;
+        } else {
+                pInfo->drMap = (u2_t)(1u << LMICuslike_getFirst500kHzDR());
+                pInfo->bandwidth = LMIC_CHANNEL_BW_500kHz;
+        }
+        return 1;
+}
+
+//
+// Session state: the 72-channel fixed variant
+//
+
+// offsets within the variant; see the layout in lmic_session_state.h
+enum {
+        SS_KIND = 0,
+        SS_SIZE = 1,
+        SS_CHMAP = 2,
+        SS_SHUFFLE = 12,
+        SS_VARIANT_SIZE = 22,
+        SS_MAP_WORDS = (72 + 15) / 16,
+};
+
+void LMICuslike_saveChannelState(u1_t *pVariant, ostime_t now) {
+        LMIC_API_PARAMETER(now);
+
+        pVariant[SS_KIND] = LMIC_SESSION_STATE_CHANNELS_FIXED72;
+        pVariant[SS_SIZE] = SS_VARIANT_SIZE;
+        for (u1_t i = 0; i < SS_MAP_WORDS; ++i) {
+                os_wlsbf2(pVariant + SS_CHMAP + 2 * i, LMIC.channelMap[i]);
+                os_wlsbf2(pVariant + SS_SHUFFLE + 2 * i, LMIC.channelShuffleMap[i]);
+        }
+}
+
+bit_t LMICuslike_restoreChannelState(const u1_t *pVariant, ostime_t now, u1_t version) {
+        LMIC_API_PARAMETER(now);
+        LMIC_API_PARAMETER(version);
+
+        if (pVariant[SS_KIND] != LMIC_SESSION_STATE_CHANNELS_FIXED72 ||
+            pVariant[SS_SIZE] != SS_VARIANT_SIZE)
+                return 0;
+
+        for (u1_t i = 0; i < SS_MAP_WORDS; ++i)
+                LMIC.channelShuffleMap[i] = os_rlsbf2(pVariant + SS_SHUFFLE + 2 * i);
+
+        // go through the enable and disable calls so the 125 and 500 kHz counts stay right.
+        for (u1_t ch = 0; ch < 72; ++ch) {
+                u2_t const word = os_rlsbf2(pVariant + SS_CHMAP + 2 * (ch >> 4));
+
+                if ((word & (1u << (ch & 0xF))) != 0)
+                        LMIC_enableChannel(ch);
+                else
+                        LMIC_disableChannel(ch);
+        }
+        return 1;
 }
 
 #endif // CFG_LMIC_US_like

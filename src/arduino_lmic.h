@@ -19,23 +19,20 @@ Author:
 #ifndef _ARDUINO_LMIC_H_
 # define _ARDUINO_LMIC_H_
 
-#ifdef __cplusplus
-extern "C"{
-#endif
-
+// Each header wraps its own declarations in LMIC_BEGIN_DECLS/LMIC_END_DECLS.
+// There is no extern "C" here: it would put whatever the headers reach,
+// Arduino.h among other things, under C linkage (#1102).
 #include "lmic/lmic.h"
+#include "lmic/lmic_accessors.h"
+#include "lmic/lmic_session_state.h"
 #include "lmic/lmic_bandplan.h"
 #include "lmic/lmic_util.h"
-
-#ifdef __cplusplus
-}
-#endif
 
 /*
  * ATECC608C secure element driver.
  *
- * These headers include C++ dependencies (Wire.h, Arduino.h) and must be
- * outside the extern "C" block.  They carry their own LMIC_BEGIN_DECLS /
+ * These headers include C++ dependencies (Wire.h, Arduino.h), so they must
+ * not be put under C linkage.  They carry their own LMIC_BEGIN_DECLS /
  * LMIC_END_DECLS guards so that the C-linkage declarations inside them are
  * correct regardless of whether the translation unit is C or C++.
  */

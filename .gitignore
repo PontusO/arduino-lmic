@@ -48,3 +48,6 @@ __vm
 # files from vscode
 .vscode
 doxygen
+
+# host unit test build products
+test/host/build/
